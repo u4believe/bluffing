@@ -12,7 +12,15 @@ const RPC_URL = process.env.ZEROG_CHAIN_RPC_URL;
 const CONTRACT_ADDRESS = process.env.ZEROG_SETTLEMENT_CONTRACT_ADDRESS;
 const SETTLER_PRIVATE_KEY = process.env.ZEROG_SETTLER_PRIVATE_KEY;
 
-const USE_MOCK = process.env.NODE_ENV !== "production" || !RPC_URL || !CONTRACT_ADDRESS;
+// Settle on real 0G Chain when explicitly enabled (ZEROG_CHAIN_LIVE=1) or in
+// production — but only if all creds are present; otherwise fall back to the
+// in-memory mock so local dev/tests never touch the network. Deliberately
+// decoupled from 0G Storage: chain settlement only needs the content hash
+// (computed locally), so we can settle on-chain before the Storage SDK upload
+// is wired in.
+const FORCE_LIVE = process.env.ZEROG_CHAIN_LIVE === "1";
+const HAS_CREDS = !!(RPC_URL && CONTRACT_ADDRESS && SETTLER_PRIVATE_KEY);
+const USE_MOCK = !HAS_CREDS || (!FORCE_LIVE && process.env.NODE_ENV !== "production");
 
 const ABI = [
   "function recordMatch(string matchId, string storageContentHash, address[] participants, int32[] eloDeltas, uint8[] placements) external",

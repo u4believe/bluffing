@@ -25,6 +25,7 @@ export default function TablePage() {
   const {
     connected,
     seats,
+    myHand,
     currentClaim,
     isYourTurn,
     lastReveal,
@@ -100,17 +101,21 @@ export default function TablePage() {
                     Waiting for seats to fill&hellip;
                   </p>
                 )}
-                {seats.map((seat) => (
-                  <TableSeat
-                    key={seat.seatIndex}
-                    seat={seat}
-                    hand={lastReveal?.hands[seat.seatIndex]}
-                    isCurrentTurn={isYourTurn && seat.seatIndex === seatIndex}
-                    isYou={seat.seatIndex === seatIndex}
-                    revealed={!!lastReveal}
-                    isLoser={lastReveal?.roundLoserSeat === seat.seatIndex}
-                  />
-                ))}
+                {seats.map((seat) => {
+                  const isYou = seat.seatIndex === seatIndex;
+                  return (
+                    <TableSeat
+                      key={seat.seatIndex}
+                      seat={seat}
+                      // Your own hand is visible all hand long; others only at a showdown.
+                      hand={isYou ? myHand ?? undefined : lastReveal?.hands[seat.seatIndex]}
+                      isCurrentTurn={isYourTurn && isYou}
+                      isYou={isYou}
+                      revealed={!!lastReveal}
+                      isLoser={lastReveal?.roundLoserSeat === seat.seatIndex}
+                    />
+                  );
+                })}
               </div>
 
               {lastReveal && (

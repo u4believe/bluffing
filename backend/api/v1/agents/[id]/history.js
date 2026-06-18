@@ -3,9 +3,9 @@
  * Backs resource: bluffline://agents/{agent_id}/history
  */
 
-import { methodGuard, sendJSON, sendError } from "../../../../../lib/http.js";
-import { getAgentById } from "../../../../../lib/agentRegistry.js";
-import { fetchJSON } from "../../../../../lib/storage/zerogStorageClient.js";
+import { methodGuard, sendJSON, sendError } from "../../../../lib/http.js";
+import { getAgentById } from "../../../../lib/agentRegistry.js";
+import { fetchJSON } from "../../../../lib/storage/zerogStorageClient.js";
 
 export default async function handler(req, res) {
   if (!methodGuard(req, res, ["GET"])) return;

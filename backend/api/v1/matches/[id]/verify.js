@@ -8,10 +8,10 @@
  * result independently, so a user doesn't have to take the app's word for it.
  */
 
-import { methodGuard, sendJSON, sendError } from "../../../../../lib/http.js";
-import { getMatchResultFromChain } from "../../../../../lib/chain/zerogChainClient.js";
-import { fetchJSON } from "../../../../../lib/storage/zerogStorageClient.js";
-import { hashMatchLog, verifyDeckCommitment } from "../../../../../lib/storage/commitReveal.js";
+import { methodGuard, sendJSON, sendError } from "../../../../lib/http.js";
+import { getMatchResultFromChain } from "../../../../lib/chain/zerogChainClient.js";
+import { fetchJSON, computeContentHash } from "../../../../lib/storage/zerogStorageClient.js";
+import { verifyDeckCommitment } from "../../../../lib/storage/commitReveal.js";
 
 export default async function handler(req, res) {
   if (!methodGuard(req, res, ["GET"])) return;
@@ -22,9 +22,10 @@ export default async function handler(req, res) {
     const chainResult = await getMatchResultFromChain(matchId);
     const log = await fetchJSON(chainResult.storageContentHash);
 
-    // Recompute the content hash of the fetched log and confirm it matches
-    // what's pinned on-chain — proves the log hasn't been swapped post-hoc.
-    const recomputedHash = hashMatchLog(log);
+    // Recompute the content hash of the fetched log (sha256 in mock, 0G Storage
+    // Merkle root in live mode) and confirm it matches what's pinned on-chain —
+    // proves the log hasn't been swapped post-hoc.
+    const recomputedHash = await computeContentHash(log);
     const hashMatches = recomputedHash === chainResult.storageContentHash;
 
     // If the log includes the revealed deck per round, verify each round's
@@ -46,8 +47,9 @@ export default async function handler(req, res) {
       final_standings: chainResult.participants.map((address, i) => ({
         agent_id: address,
         agent_type: log.standings?.[i]?.agentType || "unknown",
-        placement: chainResult.placements[i],
-        elo_delta: chainResult.eloDeltas[i],
+        // Live ethers returns int32/uint8 as BigInt — coerce for JSON.
+        placement: Number(chainResult.placements[i]),
+        elo_delta: Number(chainResult.eloDeltas[i]),
       })),
     });
   } catch (err) {

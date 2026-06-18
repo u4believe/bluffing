@@ -4,9 +4,9 @@
  * Backs resource: bluffline://matches/{match_id}/log
  */
 
-import { methodGuard, sendJSON, sendError } from "../../../../../lib/http.js";
-import { getMatchResultFromChain } from "../../../../../lib/chain/zerogChainClient.js";
-import { fetchJSON } from "../../../../../lib/storage/zerogStorageClient.js";
+import { methodGuard, sendJSON, sendError } from "../../../../lib/http.js";
+import { getMatchResultFromChain } from "../../../../lib/chain/zerogChainClient.js";
+import { fetchJSON } from "../../../../lib/storage/zerogStorageClient.js";
 
 export default async function handler(req, res) {
   if (!methodGuard(req, res, ["GET"])) return;

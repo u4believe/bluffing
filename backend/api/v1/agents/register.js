@@ -3,9 +3,9 @@
  * Maps to MCP tool: register_agent
  */
 
-import { methodGuard, sendJSON, sendError, readJSONBody } from "../../../../lib/http.js";
-import { registerAgentSchema } from "../../../../lib/schemas.js";
-import { registerAgent } from "../../../../lib/agentRegistry.js";
+import { methodGuard, sendJSON, sendError, readJSONBody } from "../../../lib/http.js";
+import { registerAgentSchema } from "../../../lib/schemas.js";
+import { registerAgent } from "../../../lib/agentRegistry.js";
 
 export default async function handler(req, res) {
   if (!methodGuard(req, res, ["POST"])) return;

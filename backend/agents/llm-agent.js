@@ -83,11 +83,16 @@ async function main() {
   console.log(`Joined table ${table_id} at seat ${seat_index}`);
 
   const ws = new WebSocket(`${WS_BASE_URL}?table_id=${table_id}&agent_key=${api_key}`);
-  let myHand = null; // populated from match_started / deal events in a full implementation
+  let myHand = null; // populated from the private hand_dealt event each round
 
   ws.on("message", async (raw) => {
     const { event, payload } = JSON.parse(raw.toString());
     console.log(`[event] ${event}`, payload);
+
+    if (event === "hand_dealt") {
+      // Private deal — only this seat's own three cards. Drives the LLM's reasoning.
+      myHand = payload.hand;
+    }
 
     if (event === "your_turn") {
       const decision = await decideActionWithLLM({ hand: myHand, currentClaim: payload.current_claim });

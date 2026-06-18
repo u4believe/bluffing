@@ -5,22 +5,25 @@
   "description": "Bluffline backend: Vercel HTTP API + standalone WebSocket game server. Humans and AI agents play 'Tell', a bluffing card game verified on 0G Storage and 0G Chain.",
   "type": "module",
   "engines": {
-    "node": ">=18.x"
+    "node": ">=20.9.0"
   },
   "scripts": {
     "dev": "vercel dev",
     "ws:dev": "node ws-server/server.js",
+    "start": "node ws-server/server.js",
     "build": "echo 'no build step required'",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
+    "@0gfoundation/0g-storage-ts-sdk": "^1.2.10",
     "@upstash/redis": "^1.34.3",
     "ethers": "^6.13.4",
-    "ws": "^8.18.0",
     "nanoid": "^5.0.9",
+    "ws": "^8.18.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "solc": "^0.8.28",
     "vercel": "^37.4.0"
   }
 }

@@ -26,6 +26,11 @@ export function TableSeat({
   revealed: boolean;
   isLoser?: boolean;
 }) {
+  // Cards face up for your own seat throughout the hand, and for everyone at a
+  // showdown reveal. Identity (Human/Agent) stays hidden until the reveal —
+  // except your own, which you obviously already know.
+  const showCards = !!hand && (revealed || isYou);
+  const showIdentity = revealed || isYou;
   return (
     <div
       className={clsx(
@@ -42,13 +47,11 @@ export function TableSeat({
       </div>
       <span className="bf-mono text-[10px] uppercase tracking-wider text-slate">
         {/* Identity is deliberately ambiguous during play — revealed only post-match */}
-        {revealed ? AGENT_TYPE_LABEL[seat.agentType] ?? "Player" : "Seated"}
+        {showIdentity ? AGENT_TYPE_LABEL[seat.agentType] ?? "Player" : "Seated"}
       </span>
       <div className="flex gap-1">
-        {hand
-          ? hand.map((card, i) => (
-              <PlayingCard key={i} card={revealed ? card : undefined} hidden={!revealed} size="sm" />
-            ))
+        {showCards && hand
+          ? hand.map((card, i) => <PlayingCard key={i} card={card} size="sm" />)
           : [0, 1, 2].map((i) => <PlayingCard key={i} hidden size="sm" />)}
       </div>
     </div>

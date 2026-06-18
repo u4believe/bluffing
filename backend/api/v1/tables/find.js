@@ -8,9 +8,9 @@
  * proxies a matchmaking request to it.
  */
 
-import { methodGuard, sendJSON, sendError, readJSONBody, getApiKey } from "../../../../lib/http.js";
-import { findTableSchema } from "../../../../lib/schemas.js";
-import { getAgentByApiKey } from "../../../../lib/agentRegistry.js";
+import { methodGuard, sendJSON, sendError, readJSONBody, getApiKey } from "../../../lib/http.js";
+import { findTableSchema } from "../../../lib/schemas.js";
+import { getAgentByApiKey } from "../../../lib/agentRegistry.js";
 
 const WS_SERVER_PUBLIC_URL = process.env.WS_SERVER_PUBLIC_URL || "ws://localhost:8080";
 const WS_SERVER_INTERNAL_URL = process.env.WS_SERVER_INTERNAL_URL || "http://localhost:8080";

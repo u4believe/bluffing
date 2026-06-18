@@ -1,60 +1,95 @@
 /**
  * lib/storage/zerogStorageClient.js
  *
- * Thin wrapper around the 0G Storage SDK/HTTP endpoint. Isolated here so the
- * rest of the codebase depends on a stable interface (uploadJSON / fetchJSON)
- * rather than the underlying 0G SDK directly — makes it easy to swap in the
- * real SDK once finalized, and to mock for local development/tests.
+ * Wrapper around 0G Storage (@0gfoundation/0g-storage-ts-sdk). The rest of the
+ * codebase depends only on this stable interface — uploadJSON / fetchJSON /
+ * computeContentHash — never the SDK directly.
  *
- * NOTE: 0G Storage's official SDK/endpoint shape may differ slightly by the
- * time you wire this up — confirm current method names against 0G's
- * developer docs before deploying. This wrapper is written so only this
- * file needs to change if the upstream API shifts.
+ * Live vs mock:
+ *   - Live 0G Storage when ZEROG_STORAGE_LIVE=1 (or NODE_ENV=production) AND the
+ *     creds are present; otherwise an in-memory mock so local dev/tests never
+ *     touch the network.
+ *   - Live content identifier is the 0G Storage Merkle root hash (what gets
+ *     pinned on-chain and used to fetch). Mock uses a sha256 of the payload.
+ *     computeContentHash() re-derives the right one per mode so verify works
+ *     against either backend.
+ *
+ * Small JSON blobs are uploaded in-memory via MemData (no temp files), and
+ * fetched back in-memory via downloadToBlob with Merkle-proof verification.
  */
 
 import { hashMatchLog } from "./commitReveal.js";
 
-const STORAGE_RPC_URL = process.env.ZEROG_STORAGE_RPC_URL;
+const INDEXER_RPC =
+  process.env.ZEROG_STORAGE_INDEXER_RPC ||
+  process.env.ZEROG_STORAGE_RPC_URL ||
+  "https://indexer-storage-testnet-turbo.0g.ai";
+const EVM_RPC = process.env.ZEROG_CHAIN_RPC_URL;
 const STORAGE_PRIVATE_KEY = process.env.ZEROG_STORAGE_PRIVATE_KEY;
 
-const USE_MOCK = process.env.NODE_ENV !== "production" || !STORAGE_RPC_URL;
+const FORCE_LIVE = process.env.ZEROG_STORAGE_LIVE === "1";
+const HAS_CREDS = !!(INDEXER_RPC && EVM_RPC && STORAGE_PRIVATE_KEY);
+const USE_MOCK = !HAS_CREDS || (!FORCE_LIVE && process.env.NODE_ENV !== "production");
 
-// In-memory mock store, used in local dev when 0G Storage credentials aren't set.
+// In-memory mock store for local dev when not running against live 0G Storage.
 const mockStore = new Map();
 
 /**
- * Upload a JSON-serializable object to 0G Storage.
- * Returns { contentHash, storageUri }.
+ * Deterministic serialization shared by upload and content-hash recompute, so
+ * a fetched-and-reparsed log re-hashes to the exact value it was stored under.
  */
-export async function uploadJSON(payload) {
-  const contentHash = hashMatchLog(payload);
+function serialize(payload) {
+  return JSON.stringify(payload);
+}
 
-  if (USE_MOCK) {
-    mockStore.set(contentHash, payload);
-    return { contentHash, storageUri: `mock://0g-storage/${contentHash}` };
+// Lazily constructed live SDK singletons (only when actually talking to 0G).
+let _live = null;
+async function live() {
+  if (!_live) {
+    const sdk = await import("@0gfoundation/0g-storage-ts-sdk");
+    const { ethers } = await import("ethers");
+    const indexer = new sdk.Indexer(INDEXER_RPC);
+    const signer = new ethers.Wallet(STORAGE_PRIVATE_KEY, new ethers.JsonRpcProvider(EVM_RPC));
+    _live = { sdk, indexer, signer };
   }
+  return _live;
+}
 
-  // --- Real 0G Storage integration ---
-  // Pseudocode pending final SDK confirmation. Typical flow:
-  //   1. Instantiate the 0G Storage indexer/uploader client with STORAGE_RPC_URL + STORAGE_PRIVATE_KEY
-  //   2. Submit the serialized payload as a blob
-  //   3. Await the returned root hash / content identifier
-  //
-  // const { Indexer, ZgFile } = await import("@0glabs/0g-ts-sdk");
-  // const indexer = new Indexer(STORAGE_RPC_URL);
-  // const file = ZgFile.fromBuffer(Buffer.from(JSON.stringify(payload)));
-  // const [tx, err] = await indexer.upload(file, STORAGE_PRIVATE_KEY);
-  // if (err) throw new Error(`0G Storage upload failed: ${err}`);
-  // return { contentHash: tx.rootHash, storageUri: `0g://${tx.rootHash}` };
-
-  throw new Error(
-    "0G Storage live integration not yet wired — set NODE_ENV=development or provide ZEROG_STORAGE_RPC_URL mock, " +
-      "or implement the SDK call above once finalized against current 0G docs."
-  );
+async function merkleRoot(bytes) {
+  const { sdk } = await live();
+  const [tree, err] = await new sdk.MemData(bytes).merkleTree();
+  if (err) throw new Error(`0G Storage merkle tree failed: ${err}`);
+  return tree.rootHash();
 }
 
 /**
- * Fetch a previously uploaded JSON object from 0G Storage by content hash.
+ * Upload a JSON-serializable object to 0G Storage.
+ * Returns { contentHash, storageUri, txHash }.
+ */
+export async function uploadJSON(payload) {
+  if (USE_MOCK) {
+    const contentHash = hashMatchLog(payload);
+    mockStore.set(contentHash, payload);
+    return { contentHash, storageUri: `mock://0g-storage/${contentHash}`, txHash: null };
+  }
+
+  const { sdk, indexer, signer } = await live();
+  const bytes = new TextEncoder().encode(serialize(payload));
+  const file = new sdk.MemData(bytes);
+
+  const [tree, treeErr] = await file.merkleTree();
+  if (treeErr) throw new Error(`0G Storage merkle tree failed: ${treeErr}`);
+
+  const [tx, upErr] = await indexer.upload(file, EVM_RPC, signer);
+  if (upErr) throw new Error(`0G Storage upload failed: ${upErr}`);
+
+  const rootHash = tree.rootHash();
+  return { contentHash: rootHash, storageUri: `0g://${rootHash}`, txHash: tx?.txHash || null };
+}
+
+/**
+ * Fetch a previously uploaded JSON object from 0G Storage by content hash
+ * (Merkle root in live mode). Live downloads verify the Merkle proof.
  */
 export async function fetchJSON(contentHash) {
   if (USE_MOCK) {
@@ -63,11 +98,23 @@ export async function fetchJSON(contentHash) {
     return value;
   }
 
-  // --- Real 0G Storage integration ---
-  // const { Indexer } = await import("@0glabs/0g-ts-sdk");
-  // const indexer = new Indexer(STORAGE_RPC_URL);
-  // const data = await indexer.download(contentHash);
-  // return JSON.parse(data.toString());
+  const { indexer } = await live();
+  const [blob, err] = await indexer.downloadToBlob(contentHash, { proof: true });
+  if (err) throw new Error(`0G Storage download failed: ${err}`);
+  const text = Buffer.from(await blob.arrayBuffer()).toString("utf8");
+  return JSON.parse(text);
+}
 
-  throw new Error("0G Storage live fetch not yet wired — see uploadJSON for integration notes.");
+/**
+ * Re-derive the content hash for a payload using the active backend's scheme,
+ * so verify can independently recompute what was pinned on-chain.
+ *   mock → sha256 (hashMatchLog); live → 0G Storage Merkle root.
+ */
+export async function computeContentHash(payload) {
+  if (USE_MOCK) return hashMatchLog(payload);
+  return merkleRoot(new TextEncoder().encode(serialize(payload)));
+}
+
+export function isLiveStorage() {
+  return !USE_MOCK;
 }

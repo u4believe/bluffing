@@ -12,6 +12,9 @@ import type { Claim, Card, MatchStanding, Seat, WSEvent } from "./types";
 export interface MatchSocketState {
   connected: boolean;
   seats: Seat[];
+  myHand: Card[] | null;
+  round: number;
+  dealCommitmentHash: string | null;
   currentClaim: Claim | null;
   isYourTurn: boolean;
   timeLimitSeconds: number | null;
@@ -30,6 +33,9 @@ export interface MatchSocketState {
 const initialState: MatchSocketState = {
   connected: false,
   seats: [],
+  myHand: null,
+  round: 0,
+  dealCommitmentHash: null,
   currentClaim: null,
   isYourTurn: false,
   timeLimitSeconds: null,
@@ -66,6 +72,22 @@ export function useMatchSocket(websocketUrl: string | null) {
             currentClaim: null,
             lastReveal: null,
           }));
+          break;
+        case "round_started":
+          // New round: clear the prior claim/reveal, the fresh hand arrives
+          // separately via hand_dealt.
+          setState((s) => ({
+            ...s,
+            round: parsed.payload.round,
+            dealCommitmentHash: parsed.payload.deal_commitment_hash,
+            currentClaim: null,
+            lastReveal: null,
+            myHand: null,
+          }));
+          break;
+        case "hand_dealt":
+          // Private: only this seat's own hand. Shown face-up during play.
+          setState((s) => ({ ...s, myHand: parsed.payload.hand }));
           break;
         case "your_turn":
           setState((s) => ({

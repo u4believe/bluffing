@@ -8,9 +8,9 @@
  * Proxies to the WS game server, which is the source of truth for match state.
  */
 
-import { methodGuard, sendJSON, sendError, readJSONBody, getApiKey } from "../../../../../lib/http.js";
-import { submitActionSchema } from "../../../../../lib/schemas.js";
-import { getAgentByApiKey } from "../../../../../lib/agentRegistry.js";
+import { methodGuard, sendJSON, sendError, readJSONBody, getApiKey } from "../../../../lib/http.js";
+import { submitActionSchema } from "../../../../lib/schemas.js";
+import { getAgentByApiKey } from "../../../../lib/agentRegistry.js";
 
 const WS_SERVER_INTERNAL_URL = process.env.WS_SERVER_INTERNAL_URL || "http://localhost:8080";
 const SHARED_SECRET = process.env.WS_SERVER_INTERNAL_SHARED_SECRET;

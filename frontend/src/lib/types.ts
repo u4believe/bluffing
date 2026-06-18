@@ -91,7 +91,9 @@ export interface VerifyMatchResponse {
 
 /** WebSocket event payloads, matching ws-server/server.js broadcasts. */
 export type WSEvent =
-  | { event: "match_started"; payload: { match_id: string; table_id: string; seats: Seat[]; deal_commitment_hash: string } }
+  | { event: "match_started"; payload: { match_id: string; table_id: string; seats: Seat[] } }
+  | { event: "round_started"; payload: { match_id: string; round: number; deal_commitment_hash: string; active_seats: number[] } }
+  | { event: "hand_dealt"; payload: { match_id: string; seat_index: number; hand: Card[]; deal_commitment_hash: string } }
   | { event: "your_turn"; payload: { match_id: string; current_claim: Claim | null; time_limit_seconds: number } }
   | { event: "claim_made"; payload: { match_id: string; seat_index: number; claim: Claim } }
   | { event: "bluff_called"; payload: { match_id: string; calling_seat: number; claimant_seat: number } }

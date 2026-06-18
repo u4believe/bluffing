@@ -22,6 +22,7 @@ import { nanoid } from "nanoid";
 import { Match } from "../lib/game/match.js";
 import { uploadJSON } from "../lib/storage/zerogStorageClient.js";
 import { recordMatchOnChain } from "../lib/chain/zerogChainClient.js";
+import { agentIdToAddress } from "../lib/chain/agentAddress.js";
 import { updateElo } from "../lib/game/engine.js";
 import { getAgentById, updateAgentStats } from "../lib/agentRegistry.js";
 
@@ -78,17 +79,52 @@ async function startMatchIfReady(table) {
   const match = new Match({ tableId: table.tableId, seats: table.seats });
   table.match = match;
 
-  const { matchId, deckCommitmentHash } = match.startRound();
-
+  // Public: who's seated at the table. Sent once when the match begins.
   broadcast(table, "match_started", {
-    match_id: matchId,
+    match_id: match.matchId,
     table_id: table.tableId,
     seats: table.seats,
-    deal_commitment_hash: deckCommitmentHash,
   });
 
+  beginRound(table);
+}
+
+/**
+ * Begin a fresh round: shuffle/deal, announce the public deal commitment,
+ * privately deal each seated player ONLY its own hand, then notify whose turn
+ * it is. Used for the first round and every round after a bluff-call showdown.
+ */
+function beginRound(table) {
+  const { match } = table;
+  const { deckCommitmentHash, activeSeats } = match.startRound();
+
+  // Public: the round opened and here's the pre-deal commitment hash. Resets
+  // any standing claim / prior reveal on each client.
+  broadcast(table, "round_started", {
+    match_id: match.matchId,
+    round: match.round,
+    deal_commitment_hash: deckCommitmentHash,
+    active_seats: activeSeats,
+  });
+
+  // Private: each connected seat learns ONLY its own hand. Hidden information is
+  // the whole game — hands are never broadcast until a bluff-call showdown.
+  for (const seatIndex of activeSeats) {
+    const ws = table.sockets.get(seatIndex);
+    if (ws && ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({
+        event: "hand_dealt",
+        payload: {
+          match_id: match.matchId,
+          seat_index: seatIndex,
+          hand: match.hands[seatIndex],
+          deal_commitment_hash: deckCommitmentHash,
+        },
+      }));
+    }
+  }
+
   notifyCurrentTurn(table);
-  driveHouseAgentIfNeeded(table);
 }
 
 function notifyCurrentTurn(table) {
@@ -109,12 +145,15 @@ function notifyCurrentTurn(table) {
 
 /** Extremely simple built-in policy for The Dealer house agent. */
 function houseAgentDecideAction(match) {
-  const seat = match.activeSeats.find((s) => match.seats[s]?.agentId === HOUSE_AGENT_ID);
   if (!match.currentClaim) {
     return { actionType: "claim", claim: { claim_type: "high_card", rank_threshold: 3 } };
   }
   // Naive policy: escalate rank_threshold by 1 if possible, otherwise call bluff.
-  const next = { ...match.currentClaim, rank_threshold: match.currentClaim.rank_threshold + 1 };
+  // Build a clean claim — don't carry the previous claim's claimantSeat forward.
+  const next = {
+    claim_type: match.currentClaim.claim_type,
+    rank_threshold: match.currentClaim.rank_threshold + 1,
+  };
   if (next.rank_threshold <= 9) {
     return { actionType: "claim", claim: next };
   }
@@ -125,12 +164,21 @@ function driveHouseAgentIfNeeded(table) {
   const { match } = table;
   if (!match || match.status === "completed") return;
 
-  const seatInfo = table.seats[match.currentTurnSeat];
+  const turnSeat = match.currentTurnSeat;
+  const seatInfo = table.seats[turnSeat];
   if (!seatInfo || seatInfo.agentId !== HOUSE_AGENT_ID) return;
+  if (table.pendingHouseTurn === turnSeat) return; // already scheduled for this turn
 
+  table.pendingHouseTurn = turnSeat;
   setTimeout(() => {
+    table.pendingHouseTurn = null;
+    // Re-check at fire time: only act if this exact match is still live and it's
+    // STILL this house seat's turn. Guards against acting as the wrong seat if
+    // the turn advanced while we were waiting.
+    if (!table.match || table.match !== match || match.status === "completed") return;
+    if (match.currentTurnSeat !== turnSeat) return;
     const decision = houseAgentDecideAction(match);
-    handleAction(table, match.currentTurnSeat, decision.actionType, decision.claim);
+    handleAction(table, turnSeat, decision.actionType, decision.claim);
   }, 800); // small delay so the UI can show "The Dealer is thinking..."
 }
 
@@ -143,7 +191,9 @@ async function handleAction(table, seatIndex, actionType, claim) {
     if (actionType === "claim") {
       result = match.submitClaim(seatIndex, claim);
       if (result.accepted) {
-        broadcast(table, "claim_made", { match_id: match.matchId, seat_index: seatIndex, claim });
+        // Broadcast the normalized standing claim (includes the correct
+        // claimantSeat), not the raw client-supplied object.
+        broadcast(table, "claim_made", { match_id: match.matchId, seat_index: seatIndex, claim: match.currentClaim });
         notifyCurrentTurn(table);
       }
     } else if (actionType === "bluff_call") {
@@ -164,8 +214,7 @@ async function handleAction(table, seatIndex, actionType, claim) {
         if (match.isMatchOver()) {
           await finalizeMatch(table);
         } else {
-          match.startRound();
-          notifyCurrentTurn(table);
+          beginRound(table); // re-deal, send fresh private hands, notify turn
         }
       }
     } else {
@@ -199,15 +248,20 @@ async function finalizeMatch(table) {
     storageContentHash = null;
   }
 
+  // Fetch each participant's registry record once (for current ELO + any
+  // linked wallet address). Keyed by agentId; house agent has no record.
+  const agentRecords = {};
+  for (const s of standings) {
+    if (!(s.agentId in agentRecords)) agentRecords[s.agentId] = await getAgentById(s.agentId);
+  }
+
   // Compute ELO deltas pairwise against the winner for simplicity in v1.
   const winner = standings[0];
   const eloUpdates = [];
   for (const participant of standings) {
     if (participant.seatIndex === winner.seatIndex) continue;
-    const winnerAgent = await getAgentById(winner.agentId);
-    const loserAgent = await getAgentById(participant.agentId);
-    const winnerElo = winnerAgent?.elo ?? 1200;
-    const loserElo = loserAgent?.elo ?? 1200;
+    const winnerElo = agentRecords[winner.agentId]?.elo ?? 1200;
+    const loserElo = agentRecords[participant.agentId]?.elo ?? 1200;
     const { winnerDelta, loserDelta } = updateElo(winnerElo, loserElo);
     eloUpdates.push({ agentId: winner.agentId, delta: winnerDelta });
     eloUpdates.push({ agentId: participant.agentId, delta: loserDelta });
@@ -221,7 +275,11 @@ async function finalizeMatch(table) {
   let chainTxHash = null;
   if (storageContentHash) {
     try {
-      const participants = standings.map((s) => s.agentId);
+      // Settle under each participant's on-chain address (linked wallet, else a
+      // deterministic placeholder) — the contract expects address[], not agentIds.
+      const participants = standings.map((s) =>
+        agentIdToAddress(s.agentId, agentRecords[s.agentId]?.walletAddress)
+      );
       const eloDeltas = standings.map(
         (s) => eloUpdates.find((u) => u.agentId === s.agentId)?.delta || 0
       );
