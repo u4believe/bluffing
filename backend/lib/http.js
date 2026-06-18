@@ -13,6 +13,17 @@ export function sendError(res, status, code, message) {
 }
 
 export function methodGuard(req, res, allowedMethods) {
+  // CORS: the browser frontend is served from a different origin than this API,
+  // so every response needs these headers and OPTIONS preflights must succeed.
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Agent-Key");
+  res.setHeader("Access-Control-Max-Age", "86400");
+
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return false;
+  }
   if (!allowedMethods.includes(req.method)) {
     sendError(res, 405, "method_not_allowed", `Allowed methods: ${allowedMethods.join(", ")}`);
     return false;
