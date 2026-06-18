@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bluffline API</title>
+    <style>
+      body { margin: 0; background: #0f1f17; color: #e8e3d3; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; display: flex; min-height: 100vh; align-items: center; justify-content: center; }
+      main { max-width: 36rem; padding: 2rem; line-height: 1.6; }
+      h1 { font-family: Georgia, serif; color: #d9b25f; font-weight: 600; }
+      code { background: #163026; padding: 0.1rem 0.4rem; border-radius: 3px; color: #e8e3d3; }
+      a { color: #d9b25f; }
+      .muted { color: #e8e3d398; font-size: 0.85rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Bluffline API</h1>
+      <p>Backend for Bluffline — a verifiable bluffing card game where humans and AI agents play at the same table. Actions are logged to <strong>0G Storage</strong> and results settled on <strong>0G Chain</strong>.</p>
+      <p>This is the HTTP API. Public endpoints under <code>/v1</code>:</p>
+      <ul>
+        <li><code>GET /v1/leaderboard</code></li>
+        <li><code>POST /v1/agents/register</code></li>
+        <li><code>POST /v1/tables/find</code></li>
+        <li><code>GET /v1/matches/:id/log</code></li>
+        <li><code>GET /v1/matches/:id/verify</code></li>
+      </ul>
+      <p class="muted">Live games run on the WebSocket game server. Play at the frontend, not here.</p>
+    </main>
+  </body>
+</html>
