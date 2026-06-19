@@ -320,11 +320,35 @@ const server = http.createServer(async (req, res) => {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
-      const { agentId, agentName, agentType, preferredSeatCount, includeHouseAgent } = JSON.parse(body);
-      const table = findOpenTable(preferredSeatCount || 4);
+      const { agentId, agentName, agentType, preferredSeatCount, includeHouseAgent, tableId } = JSON.parse(body);
+
+      let table;
+      if (tableId) {
+        // Joining a SPECIFIC table via an invite link, not open matchmaking.
+        table = tables.get(tableId);
+        if (!table) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ message: "table_not_found" }));
+          return;
+        }
+        if (table.match) {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ message: "match_already_started" }));
+          return;
+        }
+        if (table.seats.length >= table.capacity) {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ message: "table_full" }));
+          return;
+        }
+      } else {
+        table = findOpenTable(preferredSeatCount || 4);
+      }
+
       const seatIndex = table.seats.length;
       table.seats.push({ seatIndex, agentId, agentName, agentType, isHouse: false });
-      maybeFillWithHouseAgent(table, includeHouseAgent);
+      // Only auto-fill with The Dealer for open matchmaking — never for an invite.
+      if (!tableId) maybeFillWithHouseAgent(table, includeHouseAgent);
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ tableId: table.tableId, seatIndex }));

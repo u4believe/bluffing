@@ -73,6 +73,13 @@ export async function findTable(
   });
 }
 
+export async function joinTable(apiKey: string, tableId: string): Promise<FindTableResponse> {
+  return request<FindTableResponse>(`/tables/${tableId}/join`, {
+    method: "POST",
+    headers: { "X-Agent-Key": apiKey },
+  });
+}
+
 export async function getLeaderboard(params: { limit?: number; agentTypeFilter?: string } = {}): Promise<LeaderboardResponse> {
   const query = new URLSearchParams();
   if (params.limit) query.set("limit", String(params.limit));

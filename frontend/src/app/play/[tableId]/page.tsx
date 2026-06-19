@@ -8,6 +8,7 @@ import { ClaimLadder } from "@/components/ClaimLadder";
 import { ActionPanel } from "@/components/ActionPanel";
 import { TableSeat } from "@/components/TableSeat";
 import { HowToPlay } from "@/components/HowToPlay";
+import { InviteLink } from "@/components/InviteLink";
 import { useMatchSocket } from "@/lib/useMatchSocket";
 
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_BASE_URL || "ws://localhost:8080/v1/ws";
@@ -102,9 +103,12 @@ export default function TablePage() {
               {/* Seats arranged around the table */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
                 {seats.length === 0 && (
-                  <p className="text-cream/40 text-sm col-span-full text-center py-10">
-                    {mode === "human" ? "Waiting for an opponent to join…" : "Waiting for seats to fill…"}
-                  </p>
+                  <div className="col-span-full text-center py-10">
+                    <p className="text-cream/40 text-sm">
+                      {mode === "human" ? "Waiting for an opponent to join…" : "Waiting for seats to fill…"}
+                    </p>
+                    {mode === "human" && <InviteLink tableId={params.tableId} />}
+                  </div>
                 )}
                 {seats.map((seat) => {
                   const isYou = seat.seatIndex === seatIndex;
