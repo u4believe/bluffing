@@ -21,7 +21,7 @@ export default function PlayLobbyPage() {
 
   const walletReady = !!wallet.address && wallet.onCorrectChain;
 
-  async function handleSitDown() {
+  async function handleSitDown(mode: "dealer" | "human") {
     setErrorMessage(null);
     if (!walletReady) {
       setErrorMessage("Connect a wallet on 0G testnet first.");
@@ -50,8 +50,13 @@ export default function PlayLobbyPage() {
       }
 
       setStatus("finding");
-      const table = await findTable(activeSession.apiKey, { preferredSeatCount: 2, includeHouseAgent: true });
-      router.push(`/play/${table.table_id}?seat=${table.seat_index}&key=${activeSession.apiKey}`);
+      // Dealer mode fills the empty seat with The Dealer for an instant match;
+      // human mode holds the table open until another player joins.
+      const table = await findTable(activeSession.apiKey, {
+        preferredSeatCount: 2,
+        includeHouseAgent: mode === "dealer",
+      });
+      router.push(`/play/${table.table_id}?seat=${table.seat_index}&key=${activeSession.apiKey}&mode=${mode}`);
     } catch (err) {
       setStatus("error");
       setErrorMessage(err instanceof ApiError ? err.message : "Something went wrong finding a table.");
@@ -143,16 +148,39 @@ export default function PlayLobbyPage() {
             </p>
           )}
 
-          <button
-            type="button"
-            onClick={handleSitDown}
-            disabled={isBusy || !walletReady}
-            className="w-full bg-felt text-cream font-medium py-3 rounded-sm hover:bg-felt-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {status === "registering" && "Registering you at the table…"}
-            {status === "finding" && "Finding an open seat…"}
-            {(status === "idle" || status === "error") && (walletReady ? "Sit down" : "Connect wallet to sit down")}
-          </button>
+          {/* Step 3 — choose an opponent */}
+          <span className="bf-mono text-[11px] uppercase tracking-wider text-slate-on-cream mb-1.5 block">
+            3 &middot; Opponent
+          </span>
+          {isBusy ? (
+            <div className="w-full bg-felt/80 text-cream font-medium py-3 rounded-sm text-center">
+              {status === "registering" ? "Registering you at the table…" : "Finding a seat…"}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => handleSitDown("dealer")}
+                disabled={!walletReady}
+                className="w-full bg-felt text-cream font-medium py-3 rounded-sm hover:bg-felt-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Play The Dealer <span className="text-cream/60 font-normal">&middot; instant</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSitDown("human")}
+                disabled={!walletReady}
+                className="w-full border border-felt/40 text-ink font-medium py-3 rounded-sm hover:border-felt hover:bg-felt/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Play a human <span className="text-ink/50 font-normal">&middot; waits for a player</span>
+              </button>
+            </div>
+          )}
+          {!walletReady && (
+            <p className="bf-mono text-[11px] text-slate-on-cream text-center mt-2">
+              Connect a wallet to play.
+            </p>
+          )}
         </div>
       </section>
     </div>

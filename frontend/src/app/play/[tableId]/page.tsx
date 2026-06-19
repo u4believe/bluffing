@@ -17,6 +17,7 @@ export default function TablePage() {
   const searchParams = useSearchParams();
   const seatIndex = Number(searchParams.get("seat") ?? "0");
   const apiKey = searchParams.get("key") ?? "";
+  const mode = searchParams.get("mode");
 
   const websocketUrl = useMemo(() => {
     if (!params.tableId || !apiKey) return null;
@@ -102,7 +103,7 @@ export default function TablePage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
                 {seats.length === 0 && (
                   <p className="text-cream/40 text-sm col-span-full text-center py-10">
-                    Waiting for seats to fill&hellip;
+                    {mode === "human" ? "Waiting for an opponent to join…" : "Waiting for seats to fill…"}
                   </p>
                 )}
                 {seats.map((seat) => {
