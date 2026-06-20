@@ -47,17 +47,16 @@ export default async function handler(req, res) {
       }),
     });
 
+    const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`ws_server_error: ${response.status} ${text}`);
+      // Surface the game server's reason (e.g. already_in_a_table).
+      return sendError(res, response.status, result.message || "matchmaking_failed", result.message || "Could not find a table.");
     }
 
-    const { tableId, seatIndex } = await response.json();
-
     return sendJSON(res, 200, {
-      table_id: tableId,
-      seat_index: seatIndex,
-      websocket_join_url: `${WS_SERVER_PUBLIC_URL}/v1/ws?table_id=${tableId}&agent_key=${apiKey}`,
+      table_id: result.tableId,
+      seat_index: result.seatIndex,
+      websocket_join_url: `${WS_SERVER_PUBLIC_URL}/v1/ws?table_id=${result.tableId}&agent_key=${apiKey}`,
     });
   } catch (err) {
     console.error("find_table failed:", err);

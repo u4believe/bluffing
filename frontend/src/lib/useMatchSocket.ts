@@ -210,5 +210,13 @@ export function useMatchSocket(websocketUrl: string | null) {
     []
   );
 
-  return { ...state, sendAction };
+  // Explicit leave = immediate forfeit on the server (no reconnect grace).
+  const leaveMatch = useCallback(() => {
+    const ws = socketRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ actionType: "leave" }));
+    }
+  }, []);
+
+  return { ...state, sendAction, leaveMatch };
 }

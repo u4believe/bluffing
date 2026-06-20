@@ -67,6 +67,14 @@ function findOpenTable(preferredSeatCount) {
   return createTable(preferredSeatCount);
 }
 
+/** The active table a (real) agent is already seated at, if any. */
+function findAgentTable(agentId) {
+  for (const table of tables.values()) {
+    if (table.seats.some((s) => s.agentId === agentId)) return table;
+  }
+  return null;
+}
+
 function maybeFillWithHouseAgent(table, includeHouseAgent) {
   if (includeHouseAgent && table.seats.length < table.capacity && table.seats.length >= 1) {
     // Simple heuristic: top up with house agent seats once at least one real
@@ -445,6 +453,16 @@ const server = http.createServer(async (req, res) => {
     req.on("end", () => {
       const { agentId, agentName, agentType, preferredSeatCount, includeHouseAgent, tableId } = JSON.parse(body);
 
+      // One player, one table: reject if this agent is already seated elsewhere.
+      if (agentId && agentId !== HOUSE_AGENT_ID) {
+        const existing = findAgentTable(agentId);
+        if (existing) {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ message: "already_in_a_table", tableId: existing.tableId }));
+          return;
+        }
+      }
+
       let table;
       if (tableId) {
         // Joining a SPECIFIC table via an invite link, not open matchmaking.
@@ -542,7 +560,13 @@ wss.on("connection", (ws, req) => {
   ws.on("message", (raw) => {
     try {
       const { actionType, claim } = JSON.parse(raw.toString());
-      if (seat) handleAction(table, seat.seatIndex, actionType, claim);
+      if (!seat) return;
+      if (actionType === "leave") {
+        // Explicit leave = immediate forfeit (no reconnect grace).
+        forfeitSeat(table, seat.seatIndex, "left");
+        return;
+      }
+      handleAction(table, seat.seatIndex, actionType, claim);
     } catch (err) {
       ws.send(JSON.stringify({ event: "error", payload: { message: "invalid_message" } }));
     }

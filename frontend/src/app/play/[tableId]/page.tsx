@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ClaimLadder } from "@/components/ClaimLadder";
@@ -18,6 +18,7 @@ const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_BASE_URL || "ws://localhost:8080/
 export default function TablePage() {
   const params = useParams<{ tableId: string }>();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const seatIndex = Number(searchParams.get("seat") ?? "0");
   const apiKey = searchParams.get("key") ?? "";
   const mode = searchParams.get("mode");
@@ -43,7 +44,15 @@ export default function TablePage() {
     matchId,
     errorMessage,
     sendAction,
+    leaveMatch,
   } = useMatchSocket(websocketUrl);
+
+  function handleLeave() {
+    if (window.confirm("Leave the table? If a match is in progress you'll forfeit it.")) {
+      leaveMatch();
+      router.push("/play");
+    }
+  }
 
   const nameFor = (idx?: number) =>
     idx === undefined || idx === null
@@ -65,7 +74,7 @@ export default function TablePage() {
             <h1 className="font-display text-2xl text-ink mb-3">Final standings</h1>
             {forfeit && (
               <p className="text-sm text-ink/70 mb-4">
-                {nameFor(forfeit.seatIndex)} {forfeit.reason === "disconnected" ? "left the table" : "ran out of time"} — the match was awarded by forfeit.
+                {nameFor(forfeit.seatIndex)} {forfeit.reason === "away" ? "was away too long" : "left the table"} — the match was awarded by forfeit.
               </p>
             )}
             <ol className="flex flex-col gap-2 mb-6">
@@ -116,6 +125,13 @@ export default function TablePage() {
               {!connected && <p className="bf-mono text-xs text-brass">Waiting on the game server…</p>}
               <SoundToggle />
               <HowToPlay />
+              <button
+                type="button"
+                onClick={handleLeave}
+                className="bf-mono text-xs uppercase tracking-wider text-tell hover:text-tell/80 transition-colors"
+              >
+                Leave
+              </button>
             </div>
           </div>
 

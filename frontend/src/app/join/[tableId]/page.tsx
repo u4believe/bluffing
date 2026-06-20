@@ -64,7 +64,9 @@ export default function JoinTablePage() {
               ? "That match has already started."
               : err.code === "table_not_found"
                 ? "That table is no longer available."
-                : err.message
+                : err.code === "already_in_a_table"
+                  ? "You're already seated at a table — leave it before joining another."
+                  : err.message
           : "Could not join that table."
       );
     }

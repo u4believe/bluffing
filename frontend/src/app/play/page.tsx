@@ -17,9 +17,15 @@ export default function PlayLobbyPage() {
   const [displayName, setDisplayName] = useState("");
   const [status, setStatus] = useState<"idle" | "registering" | "finding" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [tableIdInput, setTableIdInput] = useState("");
   const wallet = useWallet();
 
   const walletReady = !!wallet.address && wallet.onCorrectChain;
+
+  function handleJoinById() {
+    const id = tableIdInput.trim();
+    if (id) router.push(`/join/${encodeURIComponent(id)}`);
+  }
 
   async function handleSitDown(mode: "dealer" | "human") {
     setErrorMessage(null);
@@ -59,7 +65,13 @@ export default function PlayLobbyPage() {
       router.push(`/play/${table.table_id}?seat=${table.seat_index}&key=${activeSession.apiKey}&mode=${mode}`);
     } catch (err) {
       setStatus("error");
-      setErrorMessage(err instanceof ApiError ? err.message : "Something went wrong finding a table.");
+      setErrorMessage(
+        err instanceof ApiError
+          ? err.code === "already_in_a_table"
+            ? "You're already seated at a table — leave it before joining another."
+            : err.message
+          : "Something went wrong finding a table."
+      );
     }
   }
 
@@ -181,6 +193,31 @@ export default function PlayLobbyPage() {
               Connect a wallet to play.
             </p>
           )}
+
+          {/* Join a specific table by its ID (e.g. shared without the full link) */}
+          <div className="mt-6 pt-5 border-t bf-hairline-cream">
+            <span className="bf-mono text-[11px] uppercase tracking-wider text-slate-on-cream mb-1.5 block">
+              Have a table ID?
+            </span>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={tableIdInput}
+                onChange={(e) => setTableIdInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleJoinById()}
+                placeholder="Paste a table ID"
+                className="flex-1 border bf-hairline-cream rounded-sm px-3 py-2.5 bg-cream-dim text-ink placeholder:text-ink/30 focus:outline-none bf-mono text-sm"
+              />
+              <button
+                type="button"
+                onClick={handleJoinById}
+                disabled={!tableIdInput.trim()}
+                className="px-4 bg-felt text-cream font-medium rounded-sm hover:bg-felt-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Join
+              </button>
+            </div>
+          </div>
         </div>
       </section>
     </div>
