@@ -12,6 +12,7 @@ export interface Claim {
   claim_type: ClaimType;
   rank_threshold: number; // 1-9
   suit_count?: number;
+  claimantSeat?: number; // seat that made this standing claim (set by the server)
 }
 
 export interface Card {

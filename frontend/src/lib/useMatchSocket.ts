@@ -23,7 +23,11 @@ export interface MatchSocketState {
     hands: Record<number, Card[]>;
     claimResult: "claim_held" | "claim_was_bluff";
     roundLoserSeat: number;
+    callingSeat?: number;
+    claimantSeat?: number;
+    claim?: Claim | null;
   } | null;
+  pendingBluff: { callingSeat: number; claimantSeat: number; claim: Claim | null } | null;
   finalStandings: MatchStanding[] | null;
   storageContentHash: string | null;
   chainTxHash: string | null;
@@ -41,6 +45,7 @@ const initialState: MatchSocketState = {
   isYourTurn: false,
   timeLimitSeconds: null,
   lastReveal: null,
+  pendingBluff: null,
   finalStandings: null,
   storageContentHash: null,
   chainTxHash: null,
@@ -107,7 +112,16 @@ export function useMatchSocket(websocketUrl: string | null) {
           break;
         case "bluff_called":
           sounds.bluff();
-          setState((s) => ({ ...s, isYourTurn: false }));
+          // Stash who called whom + the claim being called, to narrate the reveal.
+          setState((s) => ({
+            ...s,
+            isYourTurn: false,
+            pendingBluff: {
+              callingSeat: parsed.payload.calling_seat,
+              claimantSeat: parsed.payload.claimant_seat,
+              claim: s.currentClaim,
+            },
+          }));
           break;
         case "hand_revealed":
           sounds.reveal();
@@ -117,7 +131,11 @@ export function useMatchSocket(websocketUrl: string | null) {
               hands: parsed.payload.hands,
               claimResult: parsed.payload.claim_result,
               roundLoserSeat: parsed.payload.round_loser_seat,
+              callingSeat: s.pendingBluff?.callingSeat,
+              claimantSeat: s.pendingBluff?.claimantSeat,
+              claim: s.pendingBluff?.claim ?? null,
             },
+            pendingBluff: null,
           }));
           break;
         case "match_completed":

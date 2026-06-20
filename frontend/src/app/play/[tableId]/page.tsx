@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ClaimLadder } from "@/components/ClaimLadder";
+import { formatClaim } from "@/lib/claims";
 import { ActionPanel } from "@/components/ActionPanel";
 import { TableSeat } from "@/components/TableSeat";
 import { HowToPlay } from "@/components/HowToPlay";
@@ -39,6 +40,14 @@ export default function TablePage() {
     errorMessage,
     sendAction,
   } = useMatchSocket(websocketUrl);
+
+  const nameFor = (idx?: number) =>
+    idx === undefined || idx === null
+      ? "A player"
+      : idx === seatIndex
+        ? "You"
+        : seats.find((s) => s.seatIndex === idx)?.agentName ?? `Seat ${idx}`;
+  const possFor = (idx?: number) => (idx === seatIndex ? "your" : `${nameFor(idx)}’s`);
 
   if (finalStandings) {
     return (
@@ -139,8 +148,20 @@ export default function TablePage() {
                       : "border-brass/50 bg-brass/10")
                   }
                 >
-                  <p className="font-display text-lg text-cream">
+                  <p className="font-display text-lg text-cream mb-1">
                     {lastReveal.claimResult === "claim_was_bluff" ? "It was a bluff." : "The claim held."}
+                  </p>
+                  <p className="text-cream/80 text-sm">
+                    {nameFor(lastReveal.callingSeat)} called {possFor(lastReveal.claimantSeat)} bluff on{" "}
+                    <span className="bf-mono text-cream">{formatClaim(lastReveal.claim ?? null)}</span>.
+                  </p>
+                  <p className="text-cream/80 text-sm mt-0.5">
+                    {lastReveal.claimResult === "claim_held"
+                      ? "The claim was true across the table — the call was wrong."
+                      : "The claim wasn’t there — the claimant was bluffing."}
+                  </p>
+                  <p className="text-tell text-sm mt-1">
+                    {nameFor(lastReveal.roundLoserSeat)} {lastReveal.roundLoserSeat === seatIndex ? "lose" : "loses"} the round (−100 chips).
                   </p>
                 </div>
               )}
@@ -159,6 +180,11 @@ export default function TablePage() {
               <p className="bf-mono text-[11px] text-cream/40 text-center">
                 Live claim ladder
               </p>
+              {currentClaim?.claimantSeat !== undefined && (
+                <p className="bf-mono text-[11px] text-cream/60 text-center">
+                  Claimed by {nameFor(currentClaim.claimantSeat)}
+                </p>
+              )}
             </div>
           </div>
         </div>

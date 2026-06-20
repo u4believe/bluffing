@@ -214,7 +214,13 @@ async function handleAction(table, seatIndex, actionType, claim) {
         if (match.isMatchOver()) {
           await finalizeMatch(table);
         } else {
-          beginRound(table); // re-deal, send fresh private hands, notify turn
+          // Pause so both players can read the showdown result before the next
+          // deal clears it. Guard in case the table is gone by the time it fires.
+          setTimeout(() => {
+            if (table.match === match && match.status !== "completed") {
+              beginRound(table); // re-deal, send fresh private hands, notify turn
+            }
+          }, 3500);
         }
       }
     } else {
