@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Claim, Card, MatchStanding, Seat, WSEvent } from "./types";
+import { sounds } from "./sounds";
 
 export interface MatchSocketState {
   connected: boolean;
@@ -76,6 +77,7 @@ export function useMatchSocket(websocketUrl: string | null) {
         case "round_started":
           // New round: clear the prior claim/reveal, the fresh hand arrives
           // separately via hand_dealt.
+          sounds.deal();
           setState((s) => ({
             ...s,
             round: parsed.payload.round,
@@ -83,6 +85,7 @@ export function useMatchSocket(websocketUrl: string | null) {
             currentClaim: null,
             lastReveal: null,
             myHand: null,
+            errorMessage: null,
           }));
           break;
         case "hand_dealt":
@@ -90,6 +93,7 @@ export function useMatchSocket(websocketUrl: string | null) {
           setState((s) => ({ ...s, myHand: parsed.payload.hand }));
           break;
         case "your_turn":
+          sounds.yourTurn();
           setState((s) => ({
             ...s,
             currentClaim: parsed.payload.current_claim,
@@ -98,12 +102,15 @@ export function useMatchSocket(websocketUrl: string | null) {
           }));
           break;
         case "claim_made":
+          sounds.claim();
           setState((s) => ({ ...s, currentClaim: parsed.payload.claim, isYourTurn: false }));
           break;
         case "bluff_called":
+          sounds.bluff();
           setState((s) => ({ ...s, isYourTurn: false }));
           break;
         case "hand_revealed":
+          sounds.reveal();
           setState((s) => ({
             ...s,
             lastReveal: {
@@ -114,6 +121,7 @@ export function useMatchSocket(websocketUrl: string | null) {
           }));
           break;
         case "match_completed":
+          sounds.matchEnd();
           setState((s) => ({
             ...s,
             finalStandings: parsed.payload.final_standings,
@@ -121,6 +129,12 @@ export function useMatchSocket(websocketUrl: string | null) {
             chainTxHash: parsed.payload.chain_tx_hash,
             isYourTurn: false,
           }));
+          break;
+        case "action_rejected":
+          // The server rejected our move (e.g. claim didn't outrank). It also
+          // re-sends your_turn when it's still ours, but re-enable defensively
+          // and surface the reason so the player can try again.
+          setState((s) => ({ ...s, isYourTurn: true, errorMessage: parsed.payload.reason }));
           break;
         case "error":
           setState((s) => ({ ...s, errorMessage: parsed.payload.message }));

@@ -9,6 +9,7 @@ import { ActionPanel } from "@/components/ActionPanel";
 import { TableSeat } from "@/components/TableSeat";
 import { HowToPlay } from "@/components/HowToPlay";
 import { InviteLink } from "@/components/InviteLink";
+import { SoundToggle } from "@/components/SoundToggle";
 import { useMatchSocket } from "@/lib/useMatchSocket";
 
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_BASE_URL || "ws://localhost:8080/v1/ws";
@@ -35,6 +36,7 @@ export default function TablePage() {
     finalStandings,
     storageContentHash,
     matchId,
+    errorMessage,
     sendAction,
   } = useMatchSocket(websocketUrl);
 
@@ -94,6 +96,7 @@ export default function TablePage() {
             </p>
             <div className="flex items-center gap-4">
               {!connected && <p className="bf-mono text-xs text-brass">Waiting on the game server…</p>}
+              <SoundToggle />
               <HowToPlay />
             </div>
           </div>
@@ -145,6 +148,7 @@ export default function TablePage() {
               <ActionPanel
                 currentClaim={currentClaim}
                 isYourTurn={isYourTurn}
+                errorMessage={errorMessage}
                 onSubmitClaim={(claim) => sendAction("claim", claim)}
                 onCallBluff={() => sendAction("bluff_call")}
               />

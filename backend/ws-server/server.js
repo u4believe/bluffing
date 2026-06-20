@@ -224,6 +224,23 @@ async function handleAction(table, seatIndex, actionType, claim) {
     result = { accepted: false, reason: err.message };
   }
 
+  // If the action was rejected, tell the acting player — otherwise their UI
+  // stays frozen (it optimistically cleared their turn). Re-prompt them when
+  // it's still their turn (e.g. a claim that didn't outrank the standing one),
+  // so the table can't deadlock.
+  if (!result.accepted) {
+    const ws = table.sockets.get(seatIndex);
+    if (ws && ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ event: "action_rejected", payload: { reason: result.reason } }));
+      if (match && match.currentTurnSeat === seatIndex && match.status !== "completed") {
+        ws.send(JSON.stringify({
+          event: "your_turn",
+          payload: { match_id: match.matchId, current_claim: match.currentClaim, time_limit_seconds: 30 },
+        }));
+      }
+    }
+  }
+
   return result;
 }
 

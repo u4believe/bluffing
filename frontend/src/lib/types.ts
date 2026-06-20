@@ -110,4 +110,5 @@ export type WSEvent =
       event: "match_completed";
       payload: { match_id: string; final_standings: MatchStanding[]; storage_content_hash: string | null; chain_tx_hash: string | null };
     }
+  | { event: "action_rejected"; payload: { reason: string } }
   | { event: "error"; payload: { message: string } };
