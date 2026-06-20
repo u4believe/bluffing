@@ -31,11 +31,21 @@ const SHARED_SECRET = process.env.WS_SERVER_INTERNAL_SHARED_SECRET;
 const HOUSE_AGENT_ID = "the_dealer";
 // How long the showdown result stays up before the next deal (ms). Tunable.
 const SHOWDOWN_PAUSE_MS = 5000;
-// Per-turn time limit — a player who doesn't act in time forfeits the match.
-const TURN_LIMIT_MS = Number(process.env.TURN_LIMIT_MS) || 30000;
-const TURN_LIMIT_SECONDS = Math.round(TURN_LIMIT_MS / 1000);
+// Per-turn time limit. A timeout SKIPS that turn; consecutive misses escalate:
+// at TIMEOUT_WARNING_AT the clock shrinks to TURN_LIMIT_FAST_MS (+ a warning),
+// at TIMEOUT_AWAY_AT the player is treated as away and forfeits.
+const TURN_LIMIT_MS = Number(process.env.TURN_LIMIT_MS) || 20000;
+const TURN_LIMIT_FAST_MS = Number(process.env.TURN_LIMIT_FAST_MS) || 10000;
+const TIMEOUT_WARNING_AT = 3;
+const TIMEOUT_AWAY_AT = 5;
 // Grace window after a disconnect to reconnect before forfeiting.
 const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS) || 20000;
+
+/** Current per-turn limit (ms) for a seat — shrinks once they've stacked misses. */
+function turnLimitMsFor(match, seat) {
+  const misses = match.consecutiveTimeouts?.[seat] || 0;
+  return misses >= TIMEOUT_WARNING_AT ? TURN_LIMIT_FAST_MS : TURN_LIMIT_MS;
+}
 
 // --- In-memory state owned by this process ---
 const tables = new Map(); // tableId -> { tableId, seats: [], match: Match|null, sockets: Map<seatIndex, ws> }
@@ -143,7 +153,7 @@ function notifyCurrentTurn(table) {
   const payload = {
     match_id: match.matchId,
     current_claim: match.currentClaim,
-    time_limit_seconds: TURN_LIMIT_SECONDS,
+    time_limit_seconds: Math.round(turnLimitMsFor(match, match.currentTurnSeat) / 1000),
   };
   if (ws && ws.readyState === ws.OPEN) {
     ws.send(JSON.stringify({ event: "your_turn", payload }));
@@ -165,9 +175,36 @@ function armTurnTimer(table) {
   if (!seatInfo || seatInfo.agentId === HOUSE_AGENT_ID) return;
   table.turnTimer = setTimeout(() => {
     if (table.match === match && match.status !== "completed" && match.currentTurnSeat === turnSeat) {
-      forfeitSeat(table, turnSeat, "turn_timeout");
+      handleTurnTimeout(table, turnSeat);
     }
-  }, TURN_LIMIT_MS);
+  }, turnLimitMsFor(match, turnSeat));
+}
+
+/**
+ * A player ran out of time. Their turn is SKIPPED. Consecutive misses escalate:
+ * at TIMEOUT_AWAY_AT they're treated as away and forfeit; otherwise the turn
+ * passes on (past TIMEOUT_WARNING_AT they also get a warning + a faster clock).
+ */
+function handleTurnTimeout(table, seatIndex) {
+  const { match } = table;
+  const misses = (match.consecutiveTimeouts[seatIndex] || 0) + 1;
+  match.consecutiveTimeouts[seatIndex] = misses;
+
+  if (misses >= TIMEOUT_AWAY_AT) {
+    forfeitSeat(table, seatIndex, "away"); // 5 in a row → away from the table
+    return;
+  }
+
+  broadcast(table, "turn_skipped", {
+    match_id: match.matchId,
+    seat_index: seatIndex,
+    consecutive_timeouts: misses,
+    warning: misses >= TIMEOUT_WARNING_AT,
+    away_at: TIMEOUT_AWAY_AT,
+  });
+
+  match.skipCurrentTurn();
+  notifyCurrentTurn(table);
 }
 
 /**
@@ -233,10 +270,12 @@ async function handleAction(table, seatIndex, actionType, claim) {
   const { match } = table;
   if (!match) return { accepted: false, reason: "no_active_match" };
 
-  // The player acted — stop their turn timer. notifyCurrentTurn re-arms for the
-  // next turn; a rejected action re-arms below.
+  // The player acted — stop their turn timer and reset their miss streak (any
+  // action, even a rejected one, proves they're present). notifyCurrentTurn
+  // re-arms for the next turn; a rejected action re-arms below.
   clearTimeout(table.turnTimer);
   table.turnTimer = null;
+  if (match.consecutiveTimeouts) match.consecutiveTimeouts[seatIndex] = 0;
 
   let result;
   try {
@@ -295,7 +334,7 @@ async function handleAction(table, seatIndex, actionType, claim) {
       if (match && match.currentTurnSeat === seatIndex && match.status !== "completed") {
         ws.send(JSON.stringify({
           event: "your_turn",
-          payload: { match_id: match.matchId, current_claim: match.currentClaim, time_limit_seconds: TURN_LIMIT_SECONDS },
+          payload: { match_id: match.matchId, current_claim: match.currentClaim, time_limit_seconds: Math.round(turnLimitMsFor(match, seatIndex) / 1000) },
         }));
         armTurnTimer(table); // still their turn — keep the clock running
       }

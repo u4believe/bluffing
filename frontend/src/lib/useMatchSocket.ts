@@ -31,6 +31,7 @@ export interface MatchSocketState {
   } | null;
   pendingBluff: { callingSeat: number; claimantSeat: number; claim: Claim | null } | null;
   finalStandings: MatchStanding[] | null;
+  lastSkip: { seatIndex: number; consecutiveTimeouts: number; warning: boolean; awayAt: number } | null;
   forfeit: { seatIndex: number; reason: string } | null;
   storageContentHash: string | null;
   chainTxHash: string | null;
@@ -51,6 +52,7 @@ const initialState: MatchSocketState = {
   lastReveal: null,
   pendingBluff: null,
   finalStandings: null,
+  lastSkip: null,
   forfeit: null,
   storageContentHash: null,
   chainTxHash: null,
@@ -97,6 +99,7 @@ export function useMatchSocket(websocketUrl: string | null) {
             lastReveal: null,
             myHand: null,
             errorMessage: null,
+            lastSkip: null,
           }));
           break;
         case "hand_dealt":
@@ -110,6 +113,7 @@ export function useMatchSocket(websocketUrl: string | null) {
             currentClaim: parsed.payload.current_claim,
             isYourTurn: true,
             timeLimitSeconds: parsed.payload.time_limit_seconds,
+            lastSkip: null,
           }));
           break;
         case "claim_made":
@@ -154,6 +158,20 @@ export function useMatchSocket(websocketUrl: string | null) {
             storageContentHash: parsed.payload.storage_content_hash,
             chainTxHash: parsed.payload.chain_tx_hash,
             isYourTurn: false,
+          }));
+          break;
+        case "turn_skipped":
+          // A player ran out of time and their turn was skipped (not a forfeit).
+          // your_turn re-enables if it's now ours; otherwise we stay waiting.
+          setState((s) => ({
+            ...s,
+            isYourTurn: false,
+            lastSkip: {
+              seatIndex: parsed.payload.seat_index,
+              consecutiveTimeouts: parsed.payload.consecutive_timeouts,
+              warning: parsed.payload.warning,
+              awayAt: parsed.payload.away_at,
+            },
           }));
           break;
         case "player_left":

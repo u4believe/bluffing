@@ -36,6 +36,7 @@ export default function TablePage() {
     isYourTurn,
     timeLimitSeconds,
     lastReveal,
+    lastSkip,
     finalStandings,
     forfeit,
     storageContentHash,
@@ -183,6 +184,31 @@ export default function TablePage() {
                     )}
                     .
                   </p>
+                </div>
+              )}
+
+              {lastSkip && (
+                <div
+                  className={
+                    "border rounded-md p-3 mb-4 text-sm " +
+                    (lastSkip.seatIndex === seatIndex && lastSkip.warning
+                      ? "border-tell/60 bg-tell/10 text-cream"
+                      : "border-cream/15 bg-ink/30 text-cream/80")
+                  }
+                  role="alert"
+                >
+                  {lastSkip.seatIndex === seatIndex ? (
+                    <>
+                      You ran out of time — turn skipped ({lastSkip.consecutiveTimeouts}/{lastSkip.awayAt}).
+                      {lastSkip.warning && (
+                        <span className="text-tell">
+                          {" "}Heads up: your clock is now faster, and you&rsquo;ll be removed from the table after {lastSkip.awayAt} misses in a row.
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>{nameFor(lastSkip.seatIndex)} ran out of time — their turn was skipped.</>
+                  )}
                 </div>
               )}
 

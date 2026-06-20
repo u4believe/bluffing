@@ -37,6 +37,8 @@ export class Match {
     this.hands = null;
     this.deckCommitmentHash = null;
     this.activeSeats = seats.map((s) => s.seatIndex);
+    // Consecutive missed turns per seat — escalates to a faster clock then removal.
+    this.consecutiveTimeouts = Object.fromEntries(seats.map((s) => [s.seatIndex, 0]));
   }
 
   /** Begin a new round: shuffle, commit hash, deal hands. */
@@ -152,6 +154,12 @@ export class Match {
    * them from active play. If it was their turn, move it to the next active
    * seat. The match ends (isMatchOver) once one or fewer seats remain.
    */
+  /** Skip the current turn without acting (used on timeout). Returns the next seat. */
+  skipCurrentTurn() {
+    this._advanceTurn();
+    return this.currentTurnSeat;
+  }
+
   forfeit(seatIndex) {
     this.chips[seatIndex] = 0;
     const wasTheirTurn = this.currentTurnSeat === seatIndex;
