@@ -29,6 +29,8 @@ import { getAgentById, updateAgentStats } from "../lib/agentRegistry.js";
 const PORT = process.env.PORT || 8080;
 const SHARED_SECRET = process.env.WS_SERVER_INTERNAL_SHARED_SECRET;
 const HOUSE_AGENT_ID = "the_dealer";
+// How long the showdown result stays up before the next deal (ms). Tunable.
+const SHOWDOWN_PAUSE_MS = 6000;
 
 // --- In-memory state owned by this process ---
 const tables = new Map(); // tableId -> { tableId, seats: [], match: Match|null, sockets: Map<seatIndex, ws> }
@@ -223,7 +225,7 @@ async function handleAction(table, seatIndex, actionType, claim) {
             if (table.match === match && match.status !== "completed") {
               beginRound(table); // re-deal, send fresh private hands, notify turn
             }
-          }, 3500);
+          }, SHOWDOWN_PAUSE_MS);
         }
       }
     } else {
