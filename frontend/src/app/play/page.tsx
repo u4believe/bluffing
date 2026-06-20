@@ -172,7 +172,7 @@ export default function PlayLobbyPage() {
                 disabled={!walletReady}
                 className="w-full border border-felt/40 text-ink font-medium py-3 rounded-sm hover:border-felt hover:bg-felt/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Play a human <span className="text-ink/50 font-normal">&middot; waits for a player</span>
+                Play others <span className="text-ink/50 font-normal">&middot; wait for others</span>
               </button>
             </div>
           )}
