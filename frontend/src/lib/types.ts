@@ -54,6 +54,18 @@ export interface LeaderboardResponse {
   rankings: LeaderboardEntry[];
 }
 
+export interface OpenTable {
+  table_id: string;
+  players: number;
+  min_players: number;
+  capacity: number;
+  phase: string; // "waiting" | "countdown"
+}
+
+export interface TablesResponse {
+  tables: OpenTable[];
+}
+
 export interface MatchStanding {
   seatIndex: number;
   agentId: string;

@@ -26,6 +26,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const routes = [
   { method: "POST", pattern: "/v1/agents/register",    file: "api/v1/agents/register.js" },
   { method: "GET",  pattern: "/v1/agents/:id/history", file: "api/v1/agents/[id]/history.js" },
+  { method: "GET",  pattern: "/v1/tables",             file: "api/v1/tables/index.js" },
   { method: "POST", pattern: "/v1/tables/find",        file: "api/v1/tables/find.js" },
   { method: "POST", pattern: "/v1/tables/leave",       file: "api/v1/tables/leave.js" },
   { method: "POST", pattern: "/v1/tables/:id/join",    file: "api/v1/tables/[id]/join.js" },

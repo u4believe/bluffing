@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
-import { registerAgent, findTable, leaveCurrentTable, ApiError } from "@/lib/api";
+import { registerAgent, findTable, leaveCurrentTable, listOpenTables, ApiError } from "@/lib/api";
 import { loadSession, saveSession, type AgentSession } from "@/lib/session";
+import type { OpenTable } from "@/lib/types";
 import { useWallet } from "@/lib/useWallet";
 
 function short(addr: string) {
@@ -21,7 +22,20 @@ export default function PlayLobbyPage() {
   const [minPlayers, setMinPlayers] = useState(2);
   const [blocked, setBlocked] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [openTables, setOpenTables] = useState<OpenTable[]>([]);
   const wallet = useWallet();
+
+  // Poll the lobby for open human tables anyone can join.
+  useEffect(() => {
+    let active = true;
+    const refresh = () => listOpenTables().then((r) => active && setOpenTables(r.tables)).catch(() => {});
+    refresh();
+    const id = setInterval(refresh, 4000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, []);
 
   const walletReady = !!wallet.address && wallet.onCorrectChain;
 
@@ -260,6 +274,40 @@ export default function PlayLobbyPage() {
                 Join
               </button>
             </div>
+          </div>
+
+          {/* Open tables anyone can join (no invite/ID needed) */}
+          <div className="mt-6 pt-5 border-t bf-hairline-cream">
+            <span className="bf-mono text-[11px] uppercase tracking-wider text-slate-on-cream mb-2 block">
+              Open tables{openTables.length > 0 ? ` (${openTables.length})` : ""}
+            </span>
+            {openTables.length === 0 ? (
+              <p className="text-ink/45 text-sm">No open tables right now — start one with “Play others”.</p>
+            ) : (
+              <ul className="flex flex-col gap-1.5 max-h-44 overflow-y-auto">
+                {openTables.map((t) => (
+                  <li
+                    key={t.table_id}
+                    className="flex items-center justify-between border bf-hairline-cream rounded-sm px-3 py-2"
+                  >
+                    <span className="text-ink/80 text-sm">
+                      <span className="bf-mono">{t.table_id.slice(0, 8)}</span>
+                      <span className="text-ink/50">
+                        {" "}&middot; {t.players}/{t.min_players}
+                        {t.phase === "countdown" ? " · starting soon" : ""}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/join/${t.table_id}`)}
+                      className="bf-mono text-[11px] uppercase tracking-wider text-brass hover:text-brass-bright transition-colors"
+                    >
+                      Join
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </section>

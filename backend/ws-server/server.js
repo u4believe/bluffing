@@ -104,6 +104,23 @@ function realPlayerCount(table) {
   return table.seats.filter((s) => !s.isHouse).length;
 }
 
+/** Open human tables anyone can join (waiting/countdown, not full, not Dealer). */
+function listOpenTables() {
+  const out = [];
+  for (const table of tables.values()) {
+    if (table.isDealerTable || table.match || table.phase === "live") continue;
+    if (table.seats.length >= table.capacity) continue;
+    out.push({
+      table_id: table.tableId,
+      players: realPlayerCount(table),
+      min_players: table.minPlayers,
+      capacity: table.capacity,
+      phase: table.phase, // "waiting" | "countdown"
+    });
+  }
+  return out;
+}
+
 function teardownTable(table) {
   clearTimeout(table.countdownTimer);
   clearTimeout(table.turnTimer);
@@ -653,6 +670,16 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(result.accepted ? 200 : 409, { "Content-Type": "application/json" });
       res.end(JSON.stringify(result));
     });
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/internal/tables") {
+    if (req.headers["x-internal-secret"] !== SHARED_SECRET) {
+      res.writeHead(401).end(JSON.stringify({ message: "unauthorized" }));
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ tables: listOpenTables() }));
     return;
   }
 

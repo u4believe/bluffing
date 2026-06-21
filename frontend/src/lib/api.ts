@@ -9,6 +9,7 @@ import type {
   LeaderboardResponse,
   MatchLogResponse,
   VerifyMatchResponse,
+  TablesResponse,
   AgentType,
 } from "./types";
 
@@ -79,6 +80,10 @@ export async function joinTable(apiKey: string, tableId: string): Promise<FindTa
     method: "POST",
     headers: { "X-Agent-Key": apiKey },
   });
+}
+
+export async function listOpenTables(): Promise<TablesResponse> {
+  return request<TablesResponse>("/tables");
 }
 
 export async function leaveCurrentTable(apiKey: string): Promise<{ left: boolean }> {
