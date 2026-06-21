@@ -40,6 +40,8 @@ const TIMEOUT_WARNING_AT = 3;
 const TIMEOUT_AWAY_AT = 5;
 // Grace window after a disconnect to reconnect before forfeiting.
 const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS) || 20000;
+// Pre-game countdown once a human table meets its minimum-players requirement.
+const PREGAME_COUNTDOWN_MS = Number(process.env.PREGAME_COUNTDOWN_MS) || 60000;
 
 /** Current per-turn limit (ms) for a seat — shrinks once they've stacked misses. */
 function turnLimitMsFor(match, seat) {
@@ -51,20 +53,33 @@ function turnLimitMsFor(match, seat) {
 const tables = new Map(); // tableId -> { tableId, seats: [], match: Match|null, sockets: Map<seatIndex, ws> }
 const waitingQueue = []; // tableIds with open seats, FIFO for simple matchmaking
 
-function createTable(preferredSeatCount) {
+function createTable({ capacity = 6, minPlayers = 2, isDealerTable = false } = {}) {
   const tableId = nanoid();
-  const table = { tableId, capacity: preferredSeatCount, seats: [], match: null, sockets: new Map(), turnTimer: null, disconnectTimers: new Map() };
+  const table = {
+    tableId,
+    capacity,
+    minPlayers,
+    isDealerTable,
+    phase: "waiting", // waiting → countdown → live
+    seats: [],
+    nextSeat: 0, // monotonic seat-index counter (safe across leaves/joins)
+    match: null,
+    sockets: new Map(),
+    turnTimer: null,
+    disconnectTimers: new Map(),
+    countdownTimer: null,
+    countdownEndsAt: null,
+  };
   tables.set(tableId, table);
   waitingQueue.push(tableId);
   return table;
 }
 
-function findOpenTable(preferredSeatCount) {
-  for (const tableId of waitingQueue) {
-    const table = tables.get(tableId);
-    if (table && table.seats.length < table.capacity) return table;
-  }
-  return createTable(preferredSeatCount);
+/** Seat a player at a table with a collision-free seat index. */
+function seatPlayer(table, { agentId, agentName, agentType, isHouse = false }) {
+  const seatIndex = table.nextSeat++;
+  table.seats.push({ seatIndex, agentId, agentName, agentType, isHouse });
+  return seatIndex;
 }
 
 /** The active table a (real) agent is already seated at, if any. */
@@ -77,18 +92,66 @@ function findAgentTable(agentId) {
 
 function maybeFillWithHouseAgent(table, includeHouseAgent) {
   if (includeHouseAgent && table.seats.length < table.capacity && table.seats.length >= 1) {
-    // Simple heuristic: top up with house agent seats once at least one real
-    // participant has joined, so solo players aren't stuck waiting.
+    // Top up with house agent seats once at least one real participant has
+    // joined, so solo players aren't stuck waiting.
     while (table.seats.length < table.capacity) {
-      table.seats.push({
-        seatIndex: table.seats.length,
-        agentId: HOUSE_AGENT_ID,
-        agentName: "The Dealer",
-        agentType: "rule_based",
-        isHouse: true,
-      });
+      seatPlayer(table, { agentId: HOUSE_AGENT_ID, agentName: "The Dealer", agentType: "rule_based", isHouse: true });
     }
   }
+}
+
+function realPlayerCount(table) {
+  return table.seats.filter((s) => !s.isHouse).length;
+}
+
+function teardownTable(table) {
+  clearTimeout(table.countdownTimer);
+  clearTimeout(table.turnTimer);
+  table.disconnectTimers.forEach((t) => clearTimeout(t));
+  tables.delete(table.tableId);
+  const qi = waitingQueue.indexOf(table.tableId);
+  if (qi !== -1) waitingQueue.splice(qi, 1);
+}
+
+/** Remove a seat from a table that isn't live yet (waiting/countdown). */
+function removeSeat(table, seatIndex) {
+  const ws = table.sockets.get(seatIndex);
+  if (ws && ws.readyState === ws.OPEN) ws.close();
+  table.sockets.delete(seatIndex);
+  clearTimeout(table.disconnectTimers.get(seatIndex));
+  table.disconnectTimers.delete(seatIndex);
+  table.seats = table.seats.filter((s) => s.seatIndex !== seatIndex);
+
+  if (realPlayerCount(table) === 0) {
+    teardownTable(table);
+  } else {
+    cancelCountdownIfUnderMin(table);
+    broadcast(table, "table_update", {
+      table_id: table.tableId,
+      seats: table.seats,
+      phase: table.phase,
+      min_players: table.minPlayers,
+      capacity: table.capacity,
+    });
+  }
+}
+
+/** Leave a seat: forfeit if a match is live, otherwise just leave the table. */
+function leaveSeat(table, seatIndex, reason = "left") {
+  if (table.match && table.match.status !== "completed") {
+    forfeitSeat(table, seatIndex, reason);
+  } else {
+    removeSeat(table, seatIndex);
+  }
+}
+
+function leaveTableByAgent(agentId) {
+  const table = findAgentTable(agentId);
+  if (!table) return false;
+  const seat = table.seats.find((s) => s.agentId === agentId);
+  if (!seat) return false;
+  leaveSeat(table, seat.seatIndex, "left");
+  return true;
 }
 
 function broadcast(table, event, payload) {
@@ -98,8 +161,70 @@ function broadcast(table, event, payload) {
   }
 }
 
-async function startMatchIfReady(table) {
-  if (table.seats.length < 2 || table.match) return;
+/**
+ * Decide what should happen now that the table changed (a player connected or
+ * joined). Dealer tables start instantly; human tables run a pre-game countdown
+ * once they hit their minimum, then start.
+ */
+function evaluateTableStart(table) {
+  if (table.match || table.phase === "live") return;
+  if (table.isDealerTable) {
+    if (table.seats.length >= 2) startMatch(table);
+    return;
+  }
+  if (table.phase === "waiting") {
+    if (realPlayerCount(table) >= table.minPlayers) {
+      startCountdown(table);
+    } else {
+      // Still short of the minimum — let connected players see the seat count grow.
+      broadcast(table, "table_update", {
+        table_id: table.tableId,
+        seats: table.seats,
+        phase: "waiting",
+        min_players: table.minPlayers,
+        capacity: table.capacity,
+      });
+    }
+  }
+}
+
+function startCountdown(table) {
+  table.phase = "countdown";
+  table.countdownEndsAt = Date.now() + PREGAME_COUNTDOWN_MS;
+  broadcast(table, "countdown_started", {
+    table_id: table.tableId,
+    seconds: Math.round(PREGAME_COUNTDOWN_MS / 1000),
+    ends_at: table.countdownEndsAt,
+    seats: table.seats,
+    min_players: table.minPlayers,
+    capacity: table.capacity,
+  });
+  table.countdownTimer = setTimeout(() => {
+    if (tables.get(table.tableId) === table && table.phase === "countdown") startMatch(table);
+  }, PREGAME_COUNTDOWN_MS);
+}
+
+/** If players dropped below the minimum during the countdown, abort it. */
+function cancelCountdownIfUnderMin(table) {
+  if (table.phase === "countdown" && realPlayerCount(table) < table.minPlayers) {
+    clearTimeout(table.countdownTimer);
+    table.countdownTimer = null;
+    table.countdownEndsAt = null;
+    table.phase = "waiting";
+    broadcast(table, "countdown_cancelled", {
+      table_id: table.tableId,
+      min_players: table.minPlayers,
+      players: realPlayerCount(table),
+    });
+  }
+}
+
+function startMatch(table) {
+  if (table.match) return;
+  clearTimeout(table.countdownTimer);
+  table.countdownTimer = null;
+  table.countdownEndsAt = null;
+  table.phase = "live";
 
   const match = new Match({ tableId: table.tableId, seats: table.seats });
   table.match = match;
@@ -451,28 +576,29 @@ const server = http.createServer(async (req, res) => {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
-      const { agentId, agentName, agentType, preferredSeatCount, includeHouseAgent, tableId } = JSON.parse(body);
+      const { agentId, agentName, agentType, preferredSeatCount, includeHouseAgent, minPlayers, tableId } = JSON.parse(body);
 
       // One player, one table: reject if this agent is already seated elsewhere.
       if (agentId && agentId !== HOUSE_AGENT_ID) {
         const existing = findAgentTable(agentId);
         if (existing) {
+          const seat = existing.seats.find((s) => s.agentId === agentId);
           res.writeHead(409, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ message: "already_in_a_table", tableId: existing.tableId }));
+          res.end(JSON.stringify({ message: "already_in_a_table", tableId: existing.tableId, seatIndex: seat?.seatIndex }));
           return;
         }
       }
 
       let table;
       if (tableId) {
-        // Joining a SPECIFIC table via an invite link, not open matchmaking.
+        // Joining a SPECIFIC table (invite link, browse list, or table ID).
         table = tables.get(tableId);
         if (!table) {
           res.writeHead(404, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ message: "table_not_found" }));
           return;
         }
-        if (table.match) {
+        if (table.match || table.phase === "live") {
           res.writeHead(409, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ message: "match_already_started" }));
           return;
@@ -482,17 +608,22 @@ const server = http.createServer(async (req, res) => {
           res.end(JSON.stringify({ message: "table_full" }));
           return;
         }
+      } else if (includeHouseAgent) {
+        // Dealer table — instant solo match vs The Dealer.
+        table = createTable({ capacity: 2, minPlayers: 2, isDealerTable: true });
       } else {
-        table = findOpenTable(preferredSeatCount || 4);
+        // Human table — created with the chosen minimum; others join via the
+        // browse list / table ID and the game starts after a countdown.
+        const cap = Math.max(2, Math.min(6, Number(preferredSeatCount) || 6));
+        const min = Math.max(2, Math.min(cap, Number(minPlayers) || 2));
+        table = createTable({ capacity: cap, minPlayers: min });
       }
 
-      const seatIndex = table.seats.length;
-      table.seats.push({ seatIndex, agentId, agentName, agentType, isHouse: false });
-      // Only auto-fill with The Dealer for open matchmaking — never for an invite.
-      if (!tableId) maybeFillWithHouseAgent(table, includeHouseAgent);
+      const seatIndex = seatPlayer(table, { agentId, agentName, agentType });
+      if (table.isDealerTable) maybeFillWithHouseAgent(table, true);
 
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ tableId: table.tableId, seatIndex }));
+      res.end(JSON.stringify({ tableId: table.tableId, seatIndex, min_players: table.minPlayers, capacity: table.capacity }));
     });
     return;
   }
@@ -521,6 +652,22 @@ const server = http.createServer(async (req, res) => {
       const result = await handleAction(table, seatInfo.seatIndex, actionType, claim);
       res.writeHead(result.accepted ? 200 : 409, { "Content-Type": "application/json" });
       res.end(JSON.stringify(result));
+    });
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/internal/leave") {
+    if (req.headers["x-internal-secret"] !== SHARED_SECRET) {
+      res.writeHead(401).end(JSON.stringify({ message: "unauthorized" }));
+      return;
+    }
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      const { agentId } = JSON.parse(body);
+      const left = leaveTableByAgent(agentId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ left }));
     });
     return;
   }
@@ -555,15 +702,15 @@ wss.on("connection", (ws, req) => {
     }
   }
 
-  startMatchIfReady(table);
+  evaluateTableStart(table);
 
   ws.on("message", (raw) => {
     try {
       const { actionType, claim } = JSON.parse(raw.toString());
       if (!seat) return;
       if (actionType === "leave") {
-        // Explicit leave = immediate forfeit (no reconnect grace).
-        forfeitSeat(table, seat.seatIndex, "left");
+        // Explicit leave = immediate (forfeit if live, else just leave the table).
+        leaveSeat(table, seat.seatIndex, "left");
         return;
       }
       handleAction(table, seat.seatIndex, actionType, claim);
@@ -573,19 +720,20 @@ wss.on("connection", (ws, req) => {
   });
 
   ws.on("close", () => {
-    if (!seat) return;
+    if (!seat || seat.agentId === HOUSE_AGENT_ID) return;
     table.sockets.delete(seat.seatIndex);
-    const { match } = table;
-    // Live match + a real player → give a grace window to reconnect, else forfeit.
-    if (match && match.status !== "completed" && seat.agentId !== HOUSE_AGENT_ID) {
-      clearTimeout(table.disconnectTimers.get(seat.seatIndex));
-      const timer = setTimeout(() => {
-        if (table.match === match && match.status !== "completed" && !table.sockets.has(seat.seatIndex)) {
-          forfeitSeat(table, seat.seatIndex, "disconnected");
-        }
-      }, RECONNECT_GRACE_MS);
-      table.disconnectTimers.set(seat.seatIndex, timer);
-    }
+    if (!tables.get(table.tableId)) return; // table already torn down
+    if (table.match && table.match.status === "completed") return; // match already over
+    // Grace window to reconnect; if they don't return, leave — a live match
+    // forfeits, a table still waiting/counting-down just drops the seat.
+    clearTimeout(table.disconnectTimers.get(seat.seatIndex));
+    const timer = setTimeout(() => {
+      if (tables.get(table.tableId) === table && !table.sockets.has(seat.seatIndex)) {
+        if (table.match && table.match.status === "completed") return;
+        leaveSeat(table, seat.seatIndex, "disconnected");
+      }
+    }, RECONNECT_GRACE_MS);
+    table.disconnectTimers.set(seat.seatIndex, timer);
   });
 });
 

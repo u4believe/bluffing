@@ -13,6 +13,7 @@ import { sounds } from "./sounds";
 export interface MatchSocketState {
   connected: boolean;
   seats: Seat[];
+  countdown: { endsAt: number; minPlayers: number; capacity: number } | null;
   chips: Record<number, number>;
   myHand: Card[] | null;
   round: number;
@@ -42,6 +43,7 @@ export interface MatchSocketState {
 const initialState: MatchSocketState = {
   connected: false,
   seats: [],
+  countdown: null,
   chips: {},
   myHand: null,
   round: 0,
@@ -83,9 +85,27 @@ export function useMatchSocket(websocketUrl: string | null) {
             matchId: parsed.payload.match_id,
             seats: parsed.payload.seats,
             chips: parsed.payload.chips ?? {},
+            countdown: null,
             currentClaim: null,
             lastReveal: null,
           }));
+          break;
+        case "countdown_started":
+          setState((s) => ({
+            ...s,
+            seats: parsed.payload.seats,
+            countdown: {
+              endsAt: parsed.payload.ends_at,
+              minPlayers: parsed.payload.min_players,
+              capacity: parsed.payload.capacity,
+            },
+          }));
+          break;
+        case "countdown_cancelled":
+          setState((s) => ({ ...s, countdown: null }));
+          break;
+        case "table_update":
+          setState((s) => ({ ...s, seats: parsed.payload.seats }));
           break;
         case "round_started":
           // New round: clear the prior claim/reveal, the fresh hand arrives

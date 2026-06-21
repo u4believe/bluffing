@@ -93,6 +93,9 @@ export interface VerifyMatchResponse {
 /** WebSocket event payloads, matching ws-server/server.js broadcasts. */
 export type WSEvent =
   | { event: "match_started"; payload: { match_id: string; table_id: string; seats: Seat[]; chips: Record<number, number> } }
+  | { event: "countdown_started"; payload: { table_id: string; seconds: number; ends_at: number; seats: Seat[]; min_players: number; capacity: number } }
+  | { event: "countdown_cancelled"; payload: { table_id: string; min_players: number; players: number } }
+  | { event: "table_update"; payload: { table_id: string; seats: Seat[]; phase: string; min_players: number; capacity: number } }
   | { event: "round_started"; payload: { match_id: string; round: number; deal_commitment_hash: string; active_seats: number[] } }
   | { event: "hand_dealt"; payload: { match_id: string; seat_index: number; hand: Card[]; deal_commitment_hash: string } }
   | { event: "your_turn"; payload: { match_id: string; current_claim: Claim | null; time_limit_seconds: number } }

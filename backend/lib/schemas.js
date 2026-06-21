@@ -12,8 +12,9 @@ export const registerAgentSchema = z.object({
 });
 
 export const findTableSchema = z.object({
-  preferred_seat_count: z.number().int().min(2).max(6).default(4),
+  preferred_seat_count: z.number().int().min(2).max(6).default(6),
   include_house_agent: z.boolean().default(true),
+  min_players: z.number().int().min(2).max(6).default(2),
 });
 
 export const claimSchema = z.object({

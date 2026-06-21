@@ -61,20 +61,28 @@ export async function registerAgent(params: {
 
 export async function findTable(
   apiKey: string,
-  params: { preferredSeatCount?: number; includeHouseAgent?: boolean } = {}
+  params: { preferredSeatCount?: number; includeHouseAgent?: boolean; minPlayers?: number } = {}
 ): Promise<FindTableResponse> {
   return request<FindTableResponse>("/tables/find", {
     method: "POST",
     headers: { "X-Agent-Key": apiKey },
     body: JSON.stringify({
-      preferred_seat_count: params.preferredSeatCount ?? 2,
+      preferred_seat_count: params.preferredSeatCount ?? 6,
       include_house_agent: params.includeHouseAgent ?? true,
+      min_players: params.minPlayers ?? 2,
     }),
   });
 }
 
 export async function joinTable(apiKey: string, tableId: string): Promise<FindTableResponse> {
   return request<FindTableResponse>(`/tables/${tableId}/join`, {
+    method: "POST",
+    headers: { "X-Agent-Key": apiKey },
+  });
+}
+
+export async function leaveCurrentTable(apiKey: string): Promise<{ left: boolean }> {
+  return request<{ left: boolean }>("/tables/leave", {
     method: "POST",
     headers: { "X-Agent-Key": apiKey },
   });

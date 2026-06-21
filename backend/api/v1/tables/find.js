@@ -44,6 +44,7 @@ export default async function handler(req, res) {
         agentType: agent.agentType,
         preferredSeatCount: parsed.data.preferred_seat_count,
         includeHouseAgent: parsed.data.include_house_agent,
+        minPlayers: parsed.data.min_players,
       }),
     });
 

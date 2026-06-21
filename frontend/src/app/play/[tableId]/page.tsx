@@ -11,6 +11,7 @@ import { TableSeat } from "@/components/TableSeat";
 import { HowToPlay } from "@/components/HowToPlay";
 import { InviteLink } from "@/components/InviteLink";
 import { SoundToggle } from "@/components/SoundToggle";
+import { PreGameCountdown } from "@/components/PreGameCountdown";
 import { useMatchSocket } from "@/lib/useMatchSocket";
 
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_BASE_URL || "ws://localhost:8080/v1/ws";
@@ -31,6 +32,7 @@ export default function TablePage() {
   const {
     connected,
     seats,
+    countdown,
     chips,
     myHand,
     currentClaim,
@@ -137,12 +139,21 @@ export default function TablePage() {
 
           <div className="grid md:grid-cols-[1fr_220px] gap-8">
             <div>
+              {countdown && (
+                <PreGameCountdown
+                  endsAt={countdown.endsAt}
+                  players={seats.filter((s) => !s.isHouse).length}
+                  minPlayers={countdown.minPlayers}
+                  capacity={countdown.capacity}
+                />
+              )}
+
               {/* Seats arranged around the table */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
-                {seats.length === 0 && (
+                {!matchId && !countdown && (
                   <div className="col-span-full text-center py-10">
                     <p className="text-cream/40 text-sm">
-                      {mode === "human" ? "Waiting for an opponent to join…" : "Waiting for seats to fill…"}
+                      {mode === "human" ? "Waiting for more players to join…" : "Waiting for seats to fill…"}
                     </p>
                     {mode === "human" && <InviteLink tableId={params.tableId} />}
                   </div>

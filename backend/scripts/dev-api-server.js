@@ -27,6 +27,7 @@ const routes = [
   { method: "POST", pattern: "/v1/agents/register",    file: "api/v1/agents/register.js" },
   { method: "GET",  pattern: "/v1/agents/:id/history", file: "api/v1/agents/[id]/history.js" },
   { method: "POST", pattern: "/v1/tables/find",        file: "api/v1/tables/find.js" },
+  { method: "POST", pattern: "/v1/tables/leave",       file: "api/v1/tables/leave.js" },
   { method: "POST", pattern: "/v1/tables/:id/join",    file: "api/v1/tables/[id]/join.js" },
   { method: "POST", pattern: "/v1/tables/:id/action",  file: "api/v1/tables/[id]/action.js" },
   { method: "GET",  pattern: "/v1/matches/:id/log",    file: "api/v1/matches/[id]/log.js" },

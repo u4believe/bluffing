@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
-import { registerAgent, findTable, ApiError } from "@/lib/api";
+import { registerAgent, findTable, leaveCurrentTable, ApiError } from "@/lib/api";
 import { loadSession, saveSession, type AgentSession } from "@/lib/session";
 import { useWallet } from "@/lib/useWallet";
 
@@ -18,6 +18,9 @@ export default function PlayLobbyPage() {
   const [status, setStatus] = useState<"idle" | "registering" | "finding" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [tableIdInput, setTableIdInput] = useState("");
+  const [minPlayers, setMinPlayers] = useState(2);
+  const [blocked, setBlocked] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const wallet = useWallet();
 
   const walletReady = !!wallet.address && wallet.onCorrectChain;
@@ -27,8 +30,23 @@ export default function PlayLobbyPage() {
     if (id) router.push(`/join/${encodeURIComponent(id)}`);
   }
 
+  async function handleLeaveCurrent() {
+    if (!session) return;
+    setLeaving(true);
+    try {
+      await leaveCurrentTable(session.apiKey);
+      setBlocked(false);
+      setErrorMessage(null);
+    } catch {
+      setErrorMessage("Couldn't leave your current table — try again.");
+    } finally {
+      setLeaving(false);
+    }
+  }
+
   async function handleSitDown(mode: "dealer" | "human") {
     setErrorMessage(null);
+    setBlocked(false);
     if (!walletReady) {
       setErrorMessage("Connect a wallet on 0G testnet first.");
       return;
@@ -59,19 +77,18 @@ export default function PlayLobbyPage() {
       // Dealer mode fills the empty seat with The Dealer for an instant match;
       // human mode holds the table open until another player joins.
       const table = await findTable(activeSession.apiKey, {
-        preferredSeatCount: 2,
         includeHouseAgent: mode === "dealer",
+        minPlayers: mode === "human" ? minPlayers : 2,
       });
       router.push(`/play/${table.table_id}?seat=${table.seat_index}&key=${activeSession.apiKey}&mode=${mode}`);
     } catch (err) {
       setStatus("error");
-      setErrorMessage(
-        err instanceof ApiError
-          ? err.code === "already_in_a_table"
-            ? "You're already seated at a table — leave it before joining another."
-            : err.message
-          : "Something went wrong finding a table."
-      );
+      if (err instanceof ApiError && err.code === "already_in_a_table") {
+        setBlocked(true);
+        setErrorMessage("You're already seated at a table — leave it before joining another.");
+      } else {
+        setErrorMessage(err instanceof ApiError ? err.message : "Something went wrong finding a table.");
+      }
     }
   }
 
@@ -155,9 +172,19 @@ export default function PlayLobbyPage() {
           )}
 
           {errorMessage && (
-            <p className="text-tell text-sm mb-4" role="alert">
+            <p className="text-tell text-sm mb-2" role="alert">
               {errorMessage}
             </p>
+          )}
+          {blocked && session && (
+            <button
+              type="button"
+              onClick={handleLeaveCurrent}
+              disabled={leaving}
+              className="w-full mb-4 border border-tell/50 bg-tell/10 text-ink rounded-sm px-3 py-2.5 text-sm font-medium hover:border-tell transition-colors disabled:opacity-50"
+            >
+              {leaving ? "Leaving…" : "Leave that table"}
+            </button>
           )}
 
           {/* Step 3 — choose an opponent */}
@@ -178,13 +205,29 @@ export default function PlayLobbyPage() {
               >
                 Play The Dealer <span className="text-cream/60 font-normal">&middot; instant</span>
               </button>
+              <div className="flex items-center justify-between gap-2 mt-1">
+                <label className="bf-mono text-[11px] text-slate-on-cream">
+                  Players to wait for
+                </label>
+                <select
+                  value={minPlayers}
+                  onChange={(e) => setMinPlayers(Number(e.target.value))}
+                  className="border bf-hairline-cream rounded-sm px-2 py-1.5 bg-cream-dim text-ink text-sm focus:outline-none"
+                >
+                  {[2, 3, 4, 5, 6].map((n) => (
+                    <option key={n} value={n}>
+                      {n} players
+                    </option>
+                  ))}
+                </select>
+              </div>
               <button
                 type="button"
                 onClick={() => handleSitDown("human")}
                 disabled={!walletReady}
                 className="w-full border border-felt/40 text-ink font-medium py-3 rounded-sm hover:border-felt hover:bg-felt/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Play others <span className="text-ink/50 font-normal">&middot; wait for others</span>
+                Play others <span className="text-ink/50 font-normal">&middot; wait for {minPlayers}, then a 60s countdown</span>
               </button>
             </div>
           )}
