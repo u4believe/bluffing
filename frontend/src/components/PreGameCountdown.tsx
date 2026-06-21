@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { sounds } from "@/lib/sounds";
 
 /** Pre-game countdown banner shown once a table meets its minimum players. */
 export function PreGameCountdown({
@@ -21,6 +22,14 @@ export function PreGameCountdown({
     const id = setInterval(() => setLeft(remaining()), 250);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endsAt]);
+
+  // Play a distinct "get ready" fanfare 5s before the game starts.
+  useEffect(() => {
+    const delay = endsAt - 5000 - Date.now();
+    if (delay <= 0) return;
+    const id = setTimeout(() => sounds.gameStarting(), delay);
+    return () => clearTimeout(id);
   }, [endsAt]);
 
   const mm = Math.floor(left / 60);

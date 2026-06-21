@@ -60,6 +60,20 @@ export const sounds = {
     tone(659, 130, "triangle", 0.07, 120);
     tone(784, 240, "triangle", 0.07, 240);
   },
+  // Distinct rising fanfare ~5s before a countdown ends — "get ready".
+  gameStarting: () => {
+    tone(523, 140, "square", 0.05);
+    tone(659, 140, "square", 0.05, 150);
+    tone(784, 140, "square", 0.05, 300);
+    tone(1047, 320, "square", 0.06, 450);
+  },
+  // Triumphant flourish for a win.
+  win: () => {
+    tone(659, 140, "triangle", 0.08);
+    tone(784, 140, "triangle", 0.08, 140);
+    tone(988, 140, "triangle", 0.08, 280);
+    tone(1319, 460, "triangle", 0.09, 420);
+  },
 };
 
 export function isMuted(): boolean {

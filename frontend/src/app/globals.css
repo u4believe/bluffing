@@ -116,3 +116,18 @@ body {
   font-family: var(--font-mono);
   font-feature-settings: "tnum" 1;
 }
+
+/* Win celebration confetti — asset-free falling/spinning pieces */
+@keyframes bf-fall {
+  0% { transform: translateY(-12vh) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(112vh) rotate(720deg); opacity: 0.85; }
+}
+.bf-confetti {
+  position: absolute;
+  top: 0;
+  border-radius: 1px;
+  animation-name: bf-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}

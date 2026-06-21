@@ -12,6 +12,7 @@ import { HowToPlay } from "@/components/HowToPlay";
 import { InviteLink } from "@/components/InviteLink";
 import { SoundToggle } from "@/components/SoundToggle";
 import { PreGameCountdown } from "@/components/PreGameCountdown";
+import { WinCelebration } from "@/components/WinCelebration";
 import { useMatchSocket } from "@/lib/useMatchSocket";
 
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_BASE_URL || "ws://localhost:8080/v1/ws";
@@ -65,15 +66,21 @@ export default function TablePage() {
   const possFor = (idx?: number) => (idx === seatIndex ? "your" : `${nameFor(idx)}’s`);
 
   if (finalStandings) {
+    const youWon = finalStandings.find((s) => s.seatIndex === seatIndex)?.placement === 1;
     return (
       <div className="flex flex-col flex-1">
         <SiteHeader />
+        {youWon && <WinCelebration />}
         <section className="felt-surface flex-1 flex items-center justify-center">
           <div className="bf-card-face max-w-lg w-full mx-6 p-8 rounded-md">
             <p className="bf-mono text-[11px] uppercase tracking-wider text-slate-on-cream mb-2">
               Match complete
             </p>
-            <h1 className="font-display text-2xl text-ink mb-3">Final standings</h1>
+            {youWon ? (
+              <h1 className="font-display text-3xl text-ink mb-3">🎉 You won!</h1>
+            ) : (
+              <h1 className="font-display text-2xl text-ink mb-3">Final standings</h1>
+            )}
             {forfeit && (
               <p className="text-sm text-ink/70 mb-4">
                 {nameFor(forfeit.seatIndex)} {forfeit.reason === "away" ? "was away too long" : "left the table"} — the match was awarded by forfeit.
