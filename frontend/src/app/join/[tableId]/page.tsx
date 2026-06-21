@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
-import { registerAgent, joinTable, ApiError } from "@/lib/api";
-import { loadSession, saveSession, type AgentSession } from "@/lib/session";
+import { joinTable, leaveCurrentTable, ApiError } from "@/lib/api";
 import { useWallet } from "@/lib/useWallet";
+import { useIdentity } from "@/lib/useIdentity";
 
 function short(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
@@ -16,63 +16,63 @@ export default function JoinTablePage() {
   const params = useParams<{ tableId: string }>();
   const tableId = params.tableId;
 
-  const [session, setSession] = useState<AgentSession | null>(() => loadSession());
-  const [displayName, setDisplayName] = useState("");
-  const [status, setStatus] = useState<"idle" | "registering" | "joining" | "error">("idle");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const wallet = useWallet();
+  const identity = useIdentity(wallet);
+  const { session, identityReady, needsUsername, busy: idBusy } = identity;
+
+  const [status, setStatus] = useState<"idle" | "joining" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [blocked, setBlocked] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   const walletReady = !!wallet.address && wallet.onCorrectChain;
 
-  async function handleJoin() {
-    setErrorMessage(null);
-    if (!walletReady) {
-      setErrorMessage("Connect a wallet on 0G testnet first.");
-      return;
-    }
+  async function handleLeaveCurrent() {
+    if (!session) return;
+    setLeaving(true);
     try {
-      let activeSession = session;
-      if (!activeSession) {
-        setStatus("registering");
-        const name = displayName.trim() || `Player ${Math.floor(Math.random() * 9000 + 1000)}`;
-        const result = await registerAgent({
-          agentName: name,
-          agentType: "human",
-          walletAddress: wallet.address ?? undefined,
-        });
-        activeSession = {
-          agentId: result.agent_id,
-          apiKey: result.api_key,
-          agentName: name,
-          elo: result.starting_elo,
-          walletAddress: wallet.address ?? undefined,
-        };
-        saveSession(activeSession);
-        setSession(activeSession);
-      }
-
-      setStatus("joining");
-      const table = await joinTable(activeSession.apiKey, tableId);
-      router.push(`/play/${table.table_id}?seat=${table.seat_index}&key=${activeSession.apiKey}&mode=human`);
-    } catch (err) {
-      setStatus("error");
-      setErrorMessage(
-        err instanceof ApiError
-          ? err.code === "table_full"
-            ? "That table is already full."
-            : err.code === "match_already_started"
-              ? "That match has already started."
-              : err.code === "table_not_found"
-                ? "That table is no longer available."
-                : err.code === "already_in_a_table"
-                  ? "You're already seated at a table — leave it before joining another."
-                  : err.message
-          : "Could not join that table."
-      );
+      await leaveCurrentTable(session.apiKey);
+      setBlocked(false);
+      setErrorMessage(null);
+    } catch {
+      setErrorMessage("Couldn't leave your current table — try again.");
+    } finally {
+      setLeaving(false);
     }
   }
 
-  const isBusy = status === "registering" || status === "joining";
+  async function handleJoin() {
+    setErrorMessage(null);
+    setBlocked(false);
+    if (!identityReady || !session) {
+      setErrorMessage("Sign in with your wallet first.");
+      return;
+    }
+    setStatus("joining");
+    try {
+      const table = await joinTable(session.apiKey, tableId);
+      router.push(`/play/${table.table_id}?seat=${table.seat_index}&key=${session.apiKey}&mode=human`);
+    } catch (err) {
+      setStatus("error");
+      if (err instanceof ApiError && err.code === "already_in_a_table") {
+        setBlocked(true);
+        setErrorMessage("You're already seated at a table — leave it before joining another.");
+      } else {
+        setErrorMessage(
+          err instanceof ApiError
+            ? err.code === "table_full"
+              ? "That table is already full."
+              : err.code === "match_already_started"
+                ? "That match has already started."
+                : err.code === "table_not_found"
+                  ? "That table is no longer available."
+                  : err.message
+            : "Could not join that table."
+        );
+      }
+    }
+  }
 
   return (
     <div className="flex flex-col flex-1">
@@ -84,11 +84,10 @@ export default function JoinTablePage() {
           </p>
           <h1 className="font-display text-3xl text-ink mb-3">Join the table</h1>
           <p className="text-ink/65 text-sm leading-relaxed mb-6">
-            Table {tableId?.slice(0, 8)}. Connect your wallet on 0G testnet
-            {session ? ` — you'll join as ${session.agentName}.` : " and pick a name to take the open seat."}
+            Table {tableId?.slice(0, 8)}. Connect your wallet on 0G testnet and sign in to take the open seat.
           </p>
 
-          {/* Wallet gate */}
+          {/* Step 1 — wallet */}
           <div className="mb-5">
             <span className="bf-mono text-[11px] uppercase tracking-wider text-slate-on-cream mb-1.5 block">
               1 &middot; Wallet
@@ -133,37 +132,80 @@ export default function JoinTablePage() {
             )}
           </div>
 
-          {!session && (
-            <label className="block mb-5">
+          {/* Step 2 — identity */}
+          {walletReady && (
+            <div className="mb-5">
               <span className="bf-mono text-[11px] uppercase tracking-wider text-slate-on-cream mb-1.5 block">
-                2 &middot; Display name
+                2 &middot; Identity
               </span>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="e.g. Ola"
-                maxLength={24}
-                className="w-full border bf-hairline-cream rounded-sm px-3 py-2.5 bg-cream-dim text-ink placeholder:text-ink/30 focus:outline-none"
-              />
-            </label>
+              {identityReady && session ? (
+                <div className="flex items-center justify-between border border-felt/30 bg-felt/5 rounded-sm px-3 py-2.5">
+                  <span className="text-ink text-sm">
+                    Joining as <strong>{session.agentName}</strong>
+                  </span>
+                  <span className="bf-mono text-[11px] text-felt">✓ signed in</span>
+                </div>
+              ) : needsUsername ? (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && identity.claimUsername(usernameInput)}
+                    placeholder="Choose a username"
+                    maxLength={24}
+                    className="flex-1 border bf-hairline-cream rounded-sm px-3 py-2.5 bg-cream-dim text-ink placeholder:text-ink/30 focus:outline-none text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => identity.claimUsername(usernameInput)}
+                    disabled={idBusy || !usernameInput.trim()}
+                    className="px-4 bg-felt text-cream font-medium rounded-sm hover:bg-felt-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm"
+                  >
+                    Claim
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={identity.startSignIn}
+                  disabled={idBusy}
+                  className="w-full bg-ink text-cream rounded-sm px-3 py-2.5 text-sm font-medium hover:bg-ink/85 transition-colors disabled:opacity-50"
+                >
+                  {idBusy ? "Check your wallet…" : "Sign in with wallet"}
+                </button>
+              )}
+              {identity.error && (
+                <p className="text-tell text-xs mt-1.5" role="alert">
+                  {identity.error}
+                </p>
+              )}
+            </div>
           )}
 
           {errorMessage && (
-            <p className="text-tell text-sm mb-4" role="alert">
+            <p className="text-tell text-sm mb-2" role="alert">
               {errorMessage}
             </p>
+          )}
+          {blocked && session && (
+            <button
+              type="button"
+              onClick={handleLeaveCurrent}
+              disabled={leaving}
+              className="w-full mb-4 border border-tell/50 bg-tell/10 text-ink rounded-sm px-3 py-2.5 text-sm font-medium hover:border-tell transition-colors disabled:opacity-50"
+            >
+              {leaving ? "Leaving…" : "Leave that table"}
+            </button>
           )}
 
           <button
             type="button"
             onClick={handleJoin}
-            disabled={isBusy || !walletReady}
+            disabled={status === "joining" || !identityReady}
             className="w-full bg-felt text-cream font-medium py-3 rounded-sm hover:bg-felt-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {status === "registering" && "Registering you…"}
-            {status === "joining" && "Joining the table…"}
-            {(status === "idle" || status === "error") && (walletReady ? "Join table" : "Connect wallet to join")}
+            {status === "joining" ? "Joining the table…" : identityReady ? "Join table" : "Sign in to join"}
           </button>
         </div>
       </section>

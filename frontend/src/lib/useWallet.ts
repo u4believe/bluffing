@@ -157,5 +157,21 @@ export function useWallet() {
     }
   }, [ensureChain]);
 
-  return { ...state, connect };
+  // Sign the canonical sign-in message to prove wallet ownership. Returns the
+  // payload the API verifies, or null if rejected. Must match the backend's
+  // signInMessage() byte-for-byte.
+  const signIn = useCallback(async (): Promise<{ address: string; issued_at: string; signature: string } | null> => {
+    const eth = getProvider();
+    if (!eth || !state.address) return null;
+    const issuedAt = new Date().toISOString();
+    const message = `Bluffline sign-in\nAddress: ${state.address}\nIssued: ${issuedAt}`;
+    try {
+      const signature = (await eth.request({ method: "personal_sign", params: [message, state.address] })) as string;
+      return { address: state.address, issued_at: issuedAt, signature };
+    } catch {
+      return null;
+    }
+  }, [state.address]);
+
+  return { ...state, connect, signIn };
 }

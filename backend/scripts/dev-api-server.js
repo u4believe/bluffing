@@ -25,6 +25,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // method + path pattern → handler file. ':param' segments map to req.query[param].
 const routes = [
   { method: "POST", pattern: "/v1/agents/register",    file: "api/v1/agents/register.js" },
+  { method: "POST", pattern: "/v1/agents/login",       file: "api/v1/agents/login.js" },
+  { method: "POST", pattern: "/v1/agents/username",    file: "api/v1/agents/username.js" },
   { method: "GET",  pattern: "/v1/agents/:id/history", file: "api/v1/agents/[id]/history.js" },
   { method: "GET",  pattern: "/v1/tables",             file: "api/v1/tables/index.js" },
   { method: "POST", pattern: "/v1/tables/find",        file: "api/v1/tables/find.js" },

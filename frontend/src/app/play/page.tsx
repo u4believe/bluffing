@@ -3,10 +3,10 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
-import { registerAgent, findTable, leaveCurrentTable, listOpenTables, ApiError } from "@/lib/api";
-import { loadSession, saveSession, type AgentSession } from "@/lib/session";
+import { findTable, leaveCurrentTable, listOpenTables, ApiError } from "@/lib/api";
 import type { OpenTable } from "@/lib/types";
 import { useWallet } from "@/lib/useWallet";
+import { useIdentity } from "@/lib/useIdentity";
 
 function short(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
@@ -14,16 +14,20 @@ function short(addr: string) {
 
 export default function PlayLobbyPage() {
   const router = useRouter();
-  const [session, setSession] = useState<AgentSession | null>(() => loadSession());
-  const [displayName, setDisplayName] = useState("");
-  const [status, setStatus] = useState<"idle" | "registering" | "finding" | "error">("idle");
+  const wallet = useWallet();
+  const identity = useIdentity(wallet);
+  const { session, identityReady, needsUsername, busy: idBusy } = identity;
+
+  const [status, setStatus] = useState<"idle" | "finding" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [tableIdInput, setTableIdInput] = useState("");
   const [minPlayers, setMinPlayers] = useState(2);
   const [blocked, setBlocked] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [openTables, setOpenTables] = useState<OpenTable[]>([]);
-  const wallet = useWallet();
+  const [usernameInput, setUsernameInput] = useState("");
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
 
   // Poll the lobby for open human tables anyone can join.
   useEffect(() => {
@@ -61,40 +65,19 @@ export default function PlayLobbyPage() {
   async function handleSitDown(mode: "dealer" | "human") {
     setErrorMessage(null);
     setBlocked(false);
-    if (!walletReady) {
-      setErrorMessage("Connect a wallet on 0G testnet first.");
+    if (!identityReady || !session) {
+      setErrorMessage("Sign in with your wallet first.");
       return;
     }
+    setStatus("finding");
     try {
-      let activeSession = session;
-
-      if (!activeSession) {
-        setStatus("registering");
-        const name = displayName.trim() || `Player ${Math.floor(Math.random() * 9000 + 1000)}`;
-        const result = await registerAgent({
-          agentName: name,
-          agentType: "human",
-          walletAddress: wallet.address ?? undefined,
-        });
-        activeSession = {
-          agentId: result.agent_id,
-          apiKey: result.api_key,
-          agentName: name,
-          elo: result.starting_elo,
-          walletAddress: wallet.address ?? undefined,
-        };
-        saveSession(activeSession);
-        setSession(activeSession);
-      }
-
-      setStatus("finding");
       // Dealer mode fills the empty seat with The Dealer for an instant match;
-      // human mode holds the table open until another player joins.
-      const table = await findTable(activeSession.apiKey, {
+      // human mode holds the table open until the minimum joins, then counts down.
+      const table = await findTable(session.apiKey, {
         includeHouseAgent: mode === "dealer",
         minPlayers: mode === "human" ? minPlayers : 2,
       });
-      router.push(`/play/${table.table_id}?seat=${table.seat_index}&key=${activeSession.apiKey}&mode=${mode}`);
+      router.push(`/play/${table.table_id}?seat=${table.seat_index}&key=${session.apiKey}&mode=${mode}`);
     } catch (err) {
       setStatus("error");
       if (err instanceof ApiError && err.code === "already_in_a_table") {
@@ -106,7 +89,7 @@ export default function PlayLobbyPage() {
     }
   }
 
-  const isBusy = status === "registering" || status === "finding";
+  const finding = status === "finding";
 
   return (
     <div className="flex flex-col flex-1">
@@ -118,12 +101,11 @@ export default function PlayLobbyPage() {
           </p>
           <h1 className="font-display text-3xl text-ink mb-3">Take a seat</h1>
           <p className="text-ink/65 text-sm leading-relaxed mb-6">
-            {session
-              ? `You're playing as ${session.agentName} (ELO ${session.elo}). Connect your wallet, and we'll seat you with another player or The Dealer.`
-              : "Connect a wallet on 0G testnet, pick a name, and we'll seat you with another player — or The Dealer if no one's waiting."}
+            Connect a wallet on 0G testnet and sign in — your username is bound to your
+            wallet, so it&rsquo;s yours every time. Then play The Dealer, or open a table for others.
           </p>
 
-          {/* Step 1 — wallet gate. Seats require a 0G-testnet wallet. */}
+          {/* Step 1 — wallet */}
           <div className="mb-5">
             <span className="bf-mono text-[11px] uppercase tracking-wider text-slate-on-cream mb-1.5 block">
               1 &middot; Wallet
@@ -168,21 +150,100 @@ export default function PlayLobbyPage() {
             )}
           </div>
 
-          {/* Step 2 — name (only when there's no saved identity yet) */}
-          {!session && (
-            <label className="block mb-5">
+          {/* Step 2 — identity: sign in, then a wallet-bound unique username */}
+          {walletReady && (
+            <div className="mb-5">
               <span className="bf-mono text-[11px] uppercase tracking-wider text-slate-on-cream mb-1.5 block">
-                2 &middot; Display name
+                2 &middot; Identity
               </span>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="e.g. Temitope"
-                maxLength={24}
-                className="w-full border bf-hairline-cream rounded-sm px-3 py-2.5 bg-cream-dim text-ink placeholder:text-ink/30 focus:outline-none"
-              />
-            </label>
+              {identityReady && session ? (
+                editingName ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      onKeyDown={async (e) => {
+                        if (e.key === "Enter" && (await identity.rename(nameInput))) setEditingName(false);
+                      }}
+                      maxLength={24}
+                      className="flex-1 border bf-hairline-cream rounded-sm px-3 py-2 bg-cream-dim text-ink focus:outline-none text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (await identity.rename(nameInput)) setEditingName(false);
+                      }}
+                      className="px-3 bg-felt text-cream font-medium rounded-sm hover:bg-felt-dark transition-colors text-sm"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingName(false);
+                        identity.setError(null);
+                      }}
+                      className="px-2 text-ink/50 text-sm hover:text-ink"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between border border-felt/30 bg-felt/5 rounded-sm px-3 py-2.5">
+                    <span className="text-ink text-sm">
+                      Playing as <strong>{session.agentName}</strong>
+                      <span className="text-ink/50"> &middot; ELO {session.elo}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNameInput(session.agentName);
+                        setEditingName(true);
+                        identity.setError(null);
+                      }}
+                      className="bf-mono text-[11px] uppercase tracking-wider text-brass hover:text-brass-bright transition-colors"
+                    >
+                      Change
+                    </button>
+                  </div>
+                )
+              ) : needsUsername ? (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && identity.claimUsername(usernameInput)}
+                    placeholder="Choose a username"
+                    maxLength={24}
+                    className="flex-1 border bf-hairline-cream rounded-sm px-3 py-2.5 bg-cream-dim text-ink placeholder:text-ink/30 focus:outline-none text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => identity.claimUsername(usernameInput)}
+                    disabled={idBusy || !usernameInput.trim()}
+                    className="px-4 bg-felt text-cream font-medium rounded-sm hover:bg-felt-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm"
+                  >
+                    Claim
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={identity.startSignIn}
+                  disabled={idBusy}
+                  className="w-full bg-ink text-cream rounded-sm px-3 py-2.5 text-sm font-medium hover:bg-ink/85 transition-colors disabled:opacity-50"
+                >
+                  {idBusy ? "Check your wallet…" : "Sign in with wallet"}
+                </button>
+              )}
+              {identity.error && (
+                <p className="text-tell text-xs mt-1.5" role="alert">
+                  {identity.error}
+                </p>
+              )}
+            </div>
           )}
 
           {errorMessage && (
@@ -205,24 +266,22 @@ export default function PlayLobbyPage() {
           <span className="bf-mono text-[11px] uppercase tracking-wider text-slate-on-cream mb-1.5 block">
             3 &middot; Opponent
           </span>
-          {isBusy ? (
+          {finding ? (
             <div className="w-full bg-felt/80 text-cream font-medium py-3 rounded-sm text-center">
-              {status === "registering" ? "Registering you at the table…" : "Finding a seat…"}
+              Finding a seat…
             </div>
           ) : (
             <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={() => handleSitDown("dealer")}
-                disabled={!walletReady}
+                disabled={!identityReady}
                 className="w-full bg-felt text-cream font-medium py-3 rounded-sm hover:bg-felt-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Play The Dealer <span className="text-cream/60 font-normal">&middot; instant</span>
               </button>
               <div className="flex items-center justify-between gap-2 mt-1">
-                <label className="bf-mono text-[11px] text-slate-on-cream">
-                  Players to wait for
-                </label>
+                <label className="bf-mono text-[11px] text-slate-on-cream">Players to wait for</label>
                 <select
                   value={minPlayers}
                   onChange={(e) => setMinPlayers(Number(e.target.value))}
@@ -238,20 +297,20 @@ export default function PlayLobbyPage() {
               <button
                 type="button"
                 onClick={() => handleSitDown("human")}
-                disabled={!walletReady}
+                disabled={!identityReady}
                 className="w-full border border-felt/40 text-ink font-medium py-3 rounded-sm hover:border-felt hover:bg-felt/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Play others <span className="text-ink/50 font-normal">&middot; wait for {minPlayers}, then a 60s countdown</span>
               </button>
             </div>
           )}
-          {!walletReady && (
+          {!identityReady && (
             <p className="bf-mono text-[11px] text-slate-on-cream text-center mt-2">
-              Connect a wallet to play.
+              {walletReady ? "Sign in to play." : "Connect a wallet to play."}
             </p>
           )}
 
-          {/* Join a specific table by its ID (e.g. shared without the full link) */}
+          {/* Join a specific table by its ID */}
           <div className="mt-6 pt-5 border-t bf-hairline-cream">
             <span className="bf-mono text-[11px] uppercase tracking-wider text-slate-on-cream mb-1.5 block">
               Have a table ID?

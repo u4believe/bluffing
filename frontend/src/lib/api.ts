@@ -5,6 +5,7 @@
 
 import type {
   RegisterAgentResponse,
+  LoginResponse,
   FindTableResponse,
   LeaderboardResponse,
   MatchLogResponse,
@@ -45,10 +46,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+export interface SignInPayload {
+  address: string;
+  issued_at: string;
+  signature: string;
+}
+
 export async function registerAgent(params: {
   agentName: string;
   agentType: AgentType;
   walletAddress?: string;
+  signIn?: SignInPayload;
 }): Promise<RegisterAgentResponse> {
   return request<RegisterAgentResponse>("/agents/register", {
     method: "POST",
@@ -56,7 +64,24 @@ export async function registerAgent(params: {
       agent_name: params.agentName,
       agent_type: params.agentType,
       wallet_address: params.walletAddress,
+      issued_at: params.signIn?.issued_at,
+      signature: params.signIn?.signature,
     }),
+  });
+}
+
+export async function login(signIn: SignInPayload): Promise<LoginResponse> {
+  return request<LoginResponse>("/agents/login", {
+    method: "POST",
+    body: JSON.stringify(signIn),
+  });
+}
+
+export async function changeUsername(apiKey: string, username: string): Promise<{ agent_id: string; username: string }> {
+  return request("/agents/username", {
+    method: "POST",
+    headers: { "X-Agent-Key": apiKey },
+    body: JSON.stringify({ username }),
   });
 }
 

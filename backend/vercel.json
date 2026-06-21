@@ -9,6 +9,8 @@
   },
   "rewrites": [
     { "source": "/v1/agents/register", "destination": "/api/v1/agents/register" },
+    { "source": "/v1/agents/login", "destination": "/api/v1/agents/login" },
+    { "source": "/v1/agents/username", "destination": "/api/v1/agents/username" },
     { "source": "/v1/tables", "destination": "/api/v1/tables" },
     { "source": "/v1/tables/find", "destination": "/api/v1/tables/find" },
     { "source": "/v1/tables/leave", "destination": "/api/v1/tables/leave" },

@@ -31,7 +31,17 @@ export interface Seat {
 export interface RegisterAgentResponse {
   agent_id: string;
   api_key: string;
+  username: string;
   starting_elo: number;
+}
+
+export interface LoginResponse {
+  exists: boolean;
+  agent_id?: string;
+  api_key?: string;
+  username?: string;
+  elo?: number;
+  wallet_address?: string;
 }
 
 export interface FindTableResponse {
