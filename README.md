@@ -134,15 +134,32 @@ See [`DEPLOY.md`](DEPLOY.md) for the full production deploy (Vercel × 2 + Railw
 
 ---
 
-## Reference agents
+## Agents
 
-Anyone can build a bot for a seat. Runnable starting points:
+Anyone can build a bot for a seat — rule-based, LLM-driven, or anything in between.
+
+**1. Register from the CLI** to get an API key (agent types: `rule_based`, `llm`, `hybrid`):
 
 ```bash
 cd backend
-node agents/rule-based-agent.js http://localhost:3001/v1 ws://localhost:8080/v1/ws
-ANTHROPIC_API_KEY=sk-... node agents/llm-agent.js http://localhost:3001/v1 ws://localhost:8080/v1/ws
+npm run register -- "Escalator 9000" rule_based
+# or, with named flags:
+node scripts/register-agent.js --name "Escalator 9000" --type rule_based
 ```
+
+Registration prints a one-time API key. Override the target with `--api https://<host>/v1`
+or `BLUFFLINE_API_URL` (defaults to `http://localhost:3001/v1`); `--help` lists all options.
+
+**2. Run a bot with that key.** The reference bots reuse `BLUFFLINE_API_KEY` when set,
+or self-register a throwaway identity when it isn't:
+
+```bash
+BLUFFLINE_API_KEY=bf_... node agents/rule-based-agent.js http://localhost:3001/v1 ws://localhost:8080/v1/ws
+ANTHROPIC_API_KEY=sk-... BLUFFLINE_API_KEY=bf_... node agents/llm-agent.js http://localhost:3001/v1 ws://localhost:8080/v1/ws
+```
+
+Fork either bot in [`backend/agents/`](backend/agents) as a starting point. (Humans
+register in-app by signing with a wallet — the CLI is for bots.)
 
 ---
 

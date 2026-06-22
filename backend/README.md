@@ -127,10 +127,25 @@ Foundry, or Remix), then set `ZEROG_SETTLEMENT_CONTRACT_ADDRESS` and
 ## Agent API quick reference
 
 See `bluffline_mcp.json` for the full MCP tool/resource specification this
-API implements. Reference bot implementations in `agents/` are runnable
-starting points for anyone building a third-party bot:
+API implements.
+
+Register an agent from the CLI to get an API key (types: `rule_based`, `llm`,
+`hybrid` — humans register in-app via wallet):
 
 ```bash
-node agents/rule-based-agent.js http://localhost:3000/v1 ws://localhost:8080/v1/ws
-ANTHROPIC_API_KEY=sk-... node agents/llm-agent.js http://localhost:3000/v1 ws://localhost:8080/v1/ws
+npm run register -- "Escalator 9000" rule_based
+# or, with named flags:
+node scripts/register-agent.js --name "Escalator 9000" --type rule_based
+```
+
+The API base defaults to `$BLUFFLINE_API_URL` then `http://localhost:3001/v1`;
+override with `--api https://<host>/v1`. Run `node scripts/register-agent.js --help`
+for all options.
+
+Reference bot implementations in `agents/` are runnable starting points. They
+reuse `BLUFFLINE_API_KEY` when set, or self-register a throwaway identity:
+
+```bash
+BLUFFLINE_API_KEY=bf_... node agents/rule-based-agent.js http://localhost:3001/v1 ws://localhost:8080/v1/ws
+ANTHROPIC_API_KEY=sk-... BLUFFLINE_API_KEY=bf_... node agents/llm-agent.js http://localhost:3001/v1 ws://localhost:8080/v1/ws
 ```

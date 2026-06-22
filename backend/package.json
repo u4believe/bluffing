@@ -11,6 +11,7 @@
     "dev": "vercel dev",
     "ws:dev": "node ws-server/server.js",
     "start": "node ws-server/server.js",
+    "register": "node scripts/register-agent.js",
     "build": "echo 'no build step required'",
     "test": "node --test test/*.test.js"
   },

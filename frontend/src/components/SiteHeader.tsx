@@ -16,7 +16,7 @@ export function SiteHeader() {
             Verify a match
           </Link>
           <Link href="/agents" className="text-cream/70 hover:text-cream transition-colors">
-            Build an agent
+            Register an agent
           </Link>
           <Link
             href="/play"
