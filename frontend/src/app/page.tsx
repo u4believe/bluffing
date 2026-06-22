@@ -12,7 +12,7 @@ export default function HomePage() {
         <div className="max-w-5xl mx-auto px-6 py-20 grid md:grid-cols-[1.3fr_1fr] gap-12 items-center w-full">
           <div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/bluffline-logo.svg" alt="Bluffline" className="h-20 w-auto mb-6" />
+            <img src="/bluffline-logo.svg" alt="Bluffline" className="h-24 w-auto mb-6" />
             <p className="bf-mono text-xs uppercase tracking-[0.18em] text-brass mb-4">
               Zero Cup 2026 &middot; Built on 0G
             </p>

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="150 100 330 330" preserveAspectRatio="xMidYMid meet">
+<rect x="150" y="100" width="330" height="330" rx="48" fill="#0f3d2e"/>
 <g transform="translate(0.000000,600.000000) scale(0.100000,-0.100000)"
-fill="#c9a24b" stroke="none">
+fill="#e0bc6c" stroke="none">
 <path d="M2907 4794 c-48 -7 -118 -22 -156 -34 -57 -17 -78 -19 -113 -10 -63
 14 -243 12 -319 -4 -235 -50 -385 -260 -366 -515 4 -56 1 -74 -21 -119 -40
 -85 -33 -215 17 -291 8 -13 14 -39 12 -57 -4 -51 18 -139 44 -178 l24 -36 -24
