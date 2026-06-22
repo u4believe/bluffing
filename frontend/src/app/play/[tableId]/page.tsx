@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ClaimLadder } from "@/components/ClaimLadder";
 import { formatClaim } from "@/lib/claims";
@@ -13,6 +12,8 @@ import { InviteLink } from "@/components/InviteLink";
 import { SoundToggle } from "@/components/SoundToggle";
 import { PreGameCountdown } from "@/components/PreGameCountdown";
 import { WinCelebration } from "@/components/WinCelebration";
+import { Scoreboard } from "@/components/Scoreboard";
+import { ResultModal } from "@/components/ResultModal";
 import { useMatchSocket } from "@/lib/useMatchSocket";
 
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_BASE_URL || "ws://localhost:8080/v1/ws";
@@ -24,6 +25,7 @@ export default function TablePage() {
   const seatIndex = Number(searchParams.get("seat") ?? "0");
   const apiKey = searchParams.get("key") ?? "";
   const mode = searchParams.get("mode");
+  const [resultDismissed, setResultDismissed] = useState(false);
 
   const websocketUrl = useMemo(() => {
     if (!params.tableId || !apiKey) return null;
@@ -65,61 +67,9 @@ export default function TablePage() {
         : seats.find((s) => s.seatIndex === idx)?.agentName ?? `Seat ${idx}`;
   const possFor = (idx?: number) => (idx === seatIndex ? "your" : `${nameFor(idx)}’s`);
 
-  if (finalStandings) {
-    const youWon = finalStandings.find((s) => s.seatIndex === seatIndex)?.placement === 1;
-    return (
-      <div className="flex flex-col flex-1">
-        <SiteHeader />
-        {youWon && <WinCelebration />}
-        <section className="felt-surface flex-1 flex items-center justify-center">
-          <div className="bf-card-face max-w-lg w-full mx-6 p-8 rounded-md">
-            <p className="bf-mono text-[11px] uppercase tracking-wider text-slate-on-cream mb-2">
-              Match complete
-            </p>
-            {youWon ? (
-              <h1 className="font-display text-3xl text-ink mb-3">🎉 You won!</h1>
-            ) : (
-              <h1 className="font-display text-2xl text-ink mb-3">Final standings</h1>
-            )}
-            {forfeit && (
-              <p className="text-sm text-ink/70 mb-4">
-                {nameFor(forfeit.seatIndex)} {forfeit.reason === "away" ? "was away too long" : "left the table"} — the match was awarded by forfeit.
-              </p>
-            )}
-            <ol className="flex flex-col gap-2 mb-6">
-              {finalStandings
-                .slice()
-                .sort((a, b) => a.placement - b.placement)
-                .map((s) => (
-                  <li
-                    key={s.seatIndex}
-                    className="flex items-center justify-between border-b bf-hairline-cream pb-2 text-sm"
-                  >
-                    <span className="text-ink">
-                      #{s.placement} &middot; {nameFor(s.seatIndex)}
-                    </span>
-                    <span className="bf-mono text-ink/60">{s.finalChips} chips</span>
-                  </li>
-                ))}
-            </ol>
-            {matchId && (
-              <Link
-                href={`/verify/${matchId}`}
-                className="block text-center bg-felt text-cream font-medium py-3 rounded-sm hover:bg-felt-dark transition-colors"
-              >
-                Verify this match &rarr;
-              </Link>
-            )}
-            {storageContentHash && (
-              <p className="bf-mono text-[11px] text-slate-on-cream text-center mt-3 break-all">
-                {storageContentHash}
-              </p>
-            )}
-          </div>
-        </section>
-      </div>
-    );
-  }
+  const youWon =
+    !!finalStandings &&
+    finalStandings.find((s) => s.seatIndex === seatIndex)?.placement === 1;
 
   return (
     <div className="flex flex-col flex-1">
@@ -266,10 +216,30 @@ export default function TablePage() {
                   Claimed by {nameFor(currentClaim.claimantSeat)}
                 </p>
               )}
+
+              <Scoreboard
+                seats={seats}
+                chips={chips}
+                seatIndex={seatIndex}
+                nameFor={nameFor}
+              />
             </div>
           </div>
         </div>
       </section>
+
+      {finalStandings && youWon && <WinCelebration />}
+      {finalStandings && !resultDismissed && (
+        <ResultModal
+          finalStandings={finalStandings}
+          seatIndex={seatIndex}
+          nameFor={nameFor}
+          forfeit={forfeit}
+          matchId={matchId}
+          storageContentHash={storageContentHash}
+          onDismiss={() => setResultDismissed(true)}
+        />
+      )}
     </div>
   );
 }
