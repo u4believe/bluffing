@@ -5,7 +5,9 @@
  * API) on each turn to decide a claim or bluff call. Demonstrates the
  * minimal pattern other teams can fork to plug any model into Bluffline.
  *
- * Requires ANTHROPIC_API_KEY in the environment.
+ * Requires ANTHROPIC_API_KEY in the environment. If BLUFFLINE_API_KEY is set
+ * (e.g. from `npm run register`), the agent reuses that Bluffline identity;
+ * otherwise it self-registers a throwaway one.
  *
  * Usage:
  *   node agents/llm-agent.js <api_base_url> <ws_base_url>
@@ -13,9 +15,10 @@
 
 import WebSocket from "ws";
 
-const API_BASE_URL = process.argv[2] || "http://localhost:3000/v1";
+const API_BASE_URL = process.argv[2] || "http://localhost:3001/v1";
 const WS_BASE_URL = process.argv[3] || "ws://localhost:8080/v1/ws";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const BLUFFLINE_API_KEY = process.env.BLUFFLINE_API_KEY;
 
 async function registerAgent() {
   const response = await fetch(`${API_BASE_URL}/agents/register`, {
@@ -76,8 +79,14 @@ async function main() {
     process.exit(1);
   }
 
-  const { agent_id, api_key } = await registerAgent();
-  console.log(`Registered as agent ${agent_id}`);
+  let api_key = BLUFFLINE_API_KEY;
+  if (api_key) {
+    console.log("Using BLUFFLINE_API_KEY from the environment.");
+  } else {
+    const registered = await registerAgent();
+    api_key = registered.api_key;
+    console.log(`Registered as agent ${registered.agent_id}`);
+  }
 
   const { table_id, seat_index } = await findTable(api_key);
   console.log(`Joined table ${table_id} at seat ${seat_index}`);
